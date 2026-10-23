@@ -23,13 +23,43 @@ import yfinance as yf
 import streamlit as st
 
 # 專案內部模組匯入
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+import importlib
 from config import CACHE_DIR
 from main import run_screener_pipeline
 from fundamental_gate import run_fundamental_check
 from industry_mapping import get_stock_industry
-from stock_db import get_stock_info
+
+try:
+    import stock_db
+    importlib.reload(stock_db)
+    from stock_db import get_stock_info
+except Exception:
+    from stock_db import get_stock_info
+
 from sepa_engine import evaluate_stock_sepa
-from tdcc_fetcher import get_stock_tdcc_info
+
+# 防禦性載入與熱重載 (確保在 Streamlit Cloud 重新拉取 git 後模組不會因快取引發 ImportError)
+try:
+    import tdcc_fetcher
+    importlib.reload(tdcc_fetcher)
+    from tdcc_fetcher import get_stock_tdcc_info
+except Exception:
+    try:
+        from tdcc_fetcher import get_stock_tdcc_info
+    except Exception:
+        def get_stock_tdcc_info(ticker):
+            return {
+                "date": "",
+                "pct_1000": 0.0,
+                "pct_400": 0.0,
+                "pct_retail": 0.0,
+                "change_1000_1w": 0.0,
+                "is_increasing": False
+            }
 
 # --- 頁面全域設定 ---
 st.set_page_config(
@@ -120,22 +150,34 @@ st.markdown("""
 
 # --- 資料讀取輔助函數 ---
 def load_latest_data():
-    """載入最新快取的結構化選股數據"""
-    json_path = os.path.join(CACHE_DIR, "latest_screen_data.json")
-    if os.path.exists(json_path):
-        try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
+    """載入最新快取的結構化選股數據 (優先讀取 cache/，次之讀取根目錄)"""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(CACHE_DIR, "latest_screen_data.json"),
+        os.path.join(base_dir, "cache", "latest_screen_data.json"),
+        os.path.join(base_dir, "latest_screen_data.json"),
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
     return None
 
 def get_available_reports():
-    """取得 reports/ 目錄下所有歷史報告檔案清單"""
-    reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
-    if not os.path.exists(reports_dir):
-        return []
-    files = glob.glob(os.path.join(reports_dir, "report_*.md"))
+    """取得 reports/ 目錄或根目錄下所有歷史報告檔案清單"""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(base_dir, "reports"),
+        base_dir
+    ]
+    files = []
+    for d in candidates:
+        if os.path.exists(d):
+            files.extend(glob.glob(os.path.join(d, "report_*.md")))
+    files = list(set(files))
     files.sort(reverse=True)
     return files
 

@@ -92,15 +92,23 @@ def parse_tdcc_csv(csv_text):
 def load_tdcc_history():
     """載入歷史週記錄以計算大戶增減變化，若快取不足自動讀取 tdcc_baseline.json"""
     history = {}
-    if os.path.exists(TDCC_HISTORY_FILE):
-        try:
-            with open(TDCC_HISTORY_FILE, "r", encoding="utf-8") as f:
-                history = json.load(f)
-        except Exception:
-            pass
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        TDCC_HISTORY_FILE,
+        os.path.join(base_dir, "tdcc_history.json")
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    history = json.load(f)
+                    if history:
+                        break
+            except Exception:
+                pass
 
     # 若歷史記錄不足 2 週，自動合併專案基準歷史週 tdcc_baseline.json
-    baseline_path = os.path.join(os.path.dirname(__file__), "tdcc_baseline.json")
+    baseline_path = os.path.join(base_dir, "tdcc_baseline.json")
     if os.path.exists(baseline_path):
         try:
             with open(baseline_path, "r", encoding="utf-8") as bf:
@@ -137,17 +145,23 @@ def get_tdcc_big_holders_summary(force_refresh=False):
     }
     """
     history = load_tdcc_history()
-    cache_daily_file = os.path.join(CACHE_DIR, "tdcc_latest.json")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    cache_daily_candidates = [
+        os.path.join(CACHE_DIR, "tdcc_latest.json"),
+        os.path.join(base_dir, "tdcc_latest.json")
+    ]
 
     # 若今天已下載過且不強制更新，直接從快取讀取
-    if not force_refresh and os.path.exists(cache_daily_file):
-        try:
-            with open(cache_daily_file, "r", encoding="utf-8") as f:
-                cached = json.load(f)
-                if cached.get("data") and len(cached["data"]) > 1000:
-                    return cached["data"]
-        except Exception:
-            pass
+    if not force_refresh:
+        for cdf in cache_daily_candidates:
+            if os.path.exists(cdf):
+                try:
+                    with open(cdf, "r", encoding="utf-8") as f:
+                        cached = json.load(f)
+                        if cached.get("data") and len(cached["data"]) > 1000:
+                            return cached["data"]
+                except Exception:
+                    pass
 
     print("[TDCC] 正在下載台灣集保大戶持股分散表...")
     csv_text = fetch_latest_tdcc_raw()
@@ -208,15 +222,20 @@ def get_stock_tdcc_info(ticker):
     """
     提供自選股或特定標的查詢即時/快取的千張大戶與週增減變化
     """
-    cache_daily_file = os.path.join(CACHE_DIR, "tdcc_latest.json")
-    if os.path.exists(cache_daily_file):
-        try:
-            with open(cache_daily_file, "r", encoding="utf-8") as f:
-                d = json.load(f).get("data", {})
-                if ticker in d:
-                    return d[ticker]
-        except Exception:
-            pass
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(CACHE_DIR, "tdcc_latest.json"),
+        os.path.join(base_dir, "tdcc_latest.json")
+    ]
+    for cdf in candidates:
+        if os.path.exists(cdf):
+            try:
+                with open(cdf, "r", encoding="utf-8") as f:
+                    d = json.load(f).get("data", {})
+                    if ticker in d:
+                        return d[ticker]
+            except Exception:
+                pass
 
     summary = get_tdcc_big_holders_summary()
     return summary.get(ticker, {
