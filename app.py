@@ -150,20 +150,46 @@ st.markdown("""
 
 # --- 資料讀取輔助函數 ---
 def load_latest_data():
-    """載入最新快取的結構化選股數據 (優先讀取 cache/，次之讀取根目錄)"""
+    """載入最新快取的結構化選股數據 (自動優先載入具備真實 RS 與大戶週增之有效資料)"""
     base_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
+        os.path.join(base_dir, "latest_screen_data.json"),
         os.path.join(CACHE_DIR, "latest_screen_data.json"),
         os.path.join(base_dir, "cache", "latest_screen_data.json"),
-        os.path.join(base_dir, "latest_screen_data.json"),
     ]
+    valid_candidates = []
     for p in candidates:
         if os.path.exists(p):
             try:
                 with open(p, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    d = json.load(f)
+                    if d and (d.get("clusters") or d.get("singles")):
+                        all_items = []
+                        for c in d.get("clusters", []):
+                            all_items.extend(c.get("members", []))
+                        all_items.extend(d.get("singles", []))
+                        
+                        has_real_rs = any(float(item.get("alpha_rs", 100.0)) != 100.0 for item in all_items)
+                        has_real_tdcc = any(float(item.get("change_1000_1w", 0.0)) != 0.0 for item in all_items)
+                        
+                        score = (2 if has_real_rs else 0) + (1 if has_real_tdcc else 0)
+                        mtime = os.path.getmtime(p)
+                        valid_candidates.append((score, mtime, p, d))
             except Exception:
                 pass
+
+    if valid_candidates:
+        valid_candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        best = valid_candidates[0]
+        try:
+            target_cache = os.path.join(CACHE_DIR, "latest_screen_data.json")
+            if os.path.abspath(best[2]) != os.path.abspath(target_cache):
+                with open(target_cache, "w", encoding="utf-8") as f:
+                    json.dump(best[3], f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        return best[3]
+
     return None
 
 def get_available_reports():

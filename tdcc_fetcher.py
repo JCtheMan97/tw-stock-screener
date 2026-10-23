@@ -151,15 +151,19 @@ def get_tdcc_big_holders_summary(force_refresh=False):
         os.path.join(base_dir, "tdcc_latest.json")
     ]
 
-    # 若今天已下載過且不強制更新，直接從快取讀取
+    # 若今天已下載過且不強制更新，直接從快取讀取 (確保快取內有非 0 之真實變動)
     if not force_refresh:
         for cdf in cache_daily_candidates:
             if os.path.exists(cdf):
                 try:
                     with open(cdf, "r", encoding="utf-8") as f:
                         cached = json.load(f)
-                        if cached.get("data") and len(cached["data"]) > 1000:
-                            return cached["data"]
+                        data_map = cached.get("data", {})
+                        if data_map and len(data_map) > 1000:
+                            # 檢查快取是否有計算過週增變化 (避免全部是 0.0 的未比對舊檔)
+                            has_nonzero = any(float(v.get("change_1000_1w", 0.0)) != 0.0 for v in list(data_map.values())[:300])
+                            if has_nonzero:
+                                return data_map
                 except Exception:
                     pass
 
@@ -224,15 +228,15 @@ def get_stock_tdcc_info(ticker):
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
+        os.path.join(base_dir, "tdcc_latest.json"),
         os.path.join(CACHE_DIR, "tdcc_latest.json"),
-        os.path.join(base_dir, "tdcc_latest.json")
     ]
     for cdf in candidates:
         if os.path.exists(cdf):
             try:
                 with open(cdf, "r", encoding="utf-8") as f:
                     d = json.load(f).get("data", {})
-                    if ticker in d:
+                    if ticker in d and float(d[ticker].get("change_1000_1w", 0.0)) != 0.0:
                         return d[ticker]
             except Exception:
                 pass

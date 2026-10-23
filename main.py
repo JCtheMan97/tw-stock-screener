@@ -267,20 +267,23 @@ def run_screener_pipeline(dry_run=False, notify=True, test_limit=None):
         f_out.write(report_text)
     print(f"  -> 當日報告已自動存檔至: {daily_report_path}")
 
-    # 儲存結構化 JSON 供 Web 儀表板秒級讀取
+    # 儲存結構化 JSON 供 Web 儀表板秒級讀取 (同步存於 cache/ 與根目錄)
     import json
     json_path = os.path.join(CACHE_DIR, "latest_screen_data.json")
-    try:
-        with open(json_path, "w", encoding="utf-8") as f_json:
-            json.dump({
-                "trade_date": today_str,
-                "clusters": clustered_groups,
-                "singles": single_stocks,
-                "top_target": top_target,
-                "fundamental_report": fundamental_report
-            }, f_json, ensure_ascii=False, indent=2, default=str)
-    except Exception as e:
-        print(f"  ⚠️ 儲存結構化資料警告: {e}")
+    root_json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "latest_screen_data.json")
+    payload = {
+        "trade_date": today_str,
+        "clusters": clustered_groups,
+        "singles": single_stocks,
+        "top_target": top_target,
+        "fundamental_report": fundamental_report
+    }
+    for p in [json_path, root_json_path]:
+        try:
+            with open(p, "w", encoding="utf-8") as f_json:
+                json.dump(payload, f_json, ensure_ascii=False, indent=2, default=str)
+        except Exception as e:
+            pass
 
     elapsed = round(time.time() - start_time, 2)
     print(f"\n========================================================")
