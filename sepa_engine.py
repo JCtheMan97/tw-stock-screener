@@ -140,10 +140,15 @@ def evaluate_stock_sepa(ticker_symbol, df_stock, df_0050):
     is_alpha_ok = True
     alpha_status = "標準"
 
-    if df_0050 is not None and len(df_0050) >= 120:
+    if df_0050 is not None and len(df_0050) >= 60:
         c_0050 = df_0050['Close'].iloc[:, 0] if isinstance(df_0050['Close'], pd.DataFrame) else df_0050['Close']
-        b_c = c_0050.reindex(close.index).ffill()
-        rel_val = close / b_c
+        
+        # 統一剝除時區，確保個股與 0050 日期精確對齊無 NaN
+        c_0050_s = c_0050.tz_localize(None) if (hasattr(c_0050.index, 'tz') and c_0050.index.tz is not None) else c_0050
+        close_s = close.tz_localize(None) if (hasattr(close.index, 'tz') and close.index.tz is not None) else close
+
+        b_c = c_0050_s.reindex(close_s.index).ffill().bfill()
+        rel_val = close_s / b_c
         
         d_3m = min(len(rel_val)-1, 63)
         d_6m = min(len(rel_val)-1, 126)
@@ -171,12 +176,18 @@ def evaluate_stock_sepa(ticker_symbol, df_stock, df_0050):
             alpha_status = "🌟 Alpha領先"
         elif is_alpha_new_high:
             alpha_status = "🔥 Alpha新高"
-        elif is_rs_recovering:
-            alpha_status = "📈 動能回復中"
-        elif alpha_rs >= MIN_ALPHA_RS:
+        elif alpha_rs >= 115.0:
+            alpha_status = "🚀 超越大盤"
+        elif alpha_rs >= 100.0:
             alpha_status = "✅ 強於大盤"
+        elif is_rs_recovering:
+            alpha_status = "📈 動能回溫中"
+        elif alpha_rs >= 90.0:
+            alpha_status = "⚖️ 與大盤持平"
+        else:
+            alpha_status = "⏳ 蓄勢整理中"
 
-        is_alpha_ok = (alpha_rs >= MIN_ALPHA_RS or is_alpha_leading or is_rs_recovering)
+        is_alpha_ok = (alpha_rs >= MIN_ALPHA_RS or is_alpha_leading or is_rs_recovering or alpha_rs >= 80.0)
 
     # --- 5. 突破判定與成交量放量 (Pine Script 同步) ---
     win_10 = min(len(high), 11)

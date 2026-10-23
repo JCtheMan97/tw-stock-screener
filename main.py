@@ -132,8 +132,10 @@ def run_screener_pipeline(dry_run=False, notify=True, test_limit=None):
     
     # 下載 0050 基準
     start_date = (datetime.now() - pd.Timedelta(days=400)).strftime("%Y-%m-%d")
-    end_date = (datetime.now() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-    df_0050 = yf.download("0050.TW", start=start_date, end=end_date, progress=False, auto_adjust=True)
+    try:
+        df_0050 = yf.Ticker("0050.TW").history(start=start_date, end=end_date, auto_adjust=True)
+    except Exception:
+        df_0050 = yf.download("0050.TW", start=start_date, end=end_date, progress=False, auto_adjust=True)
     if isinstance(df_0050.columns, pd.MultiIndex):
         df_0050.columns = df_0050.columns.get_level_values(0)
 
@@ -196,17 +198,47 @@ def run_screener_pipeline(dry_run=False, notify=True, test_limit=None):
 
     print(f"  -> 單兵潛力股: {len(single_stocks)} 檔")
 
-    # 6. 最後基本面關卡：對今日首選標的執行「SEPA 深度基本面特檢」
-    print("\n[步驟 6/6] 執行最後基本面關卡：SEPA 深度基本面特檢...")
-    top_target = None
-    # 優先選擇突破爆發首選
-    for s in qualified_stocks:
+    # 6. 最後基本面關卡：多因子動態綜合評分，挑選今日爆發潛力第一名作為首選標的
+    print("\n[步驟 6/6] 執行最後基本面關卡：SEPA 多因子動態評分與首選特檢...")
+    def calculate_sepa_rank_score(s):
+        score = 0.0
+        # 1. 突破爆發信號權重大加分
         if s.get("signal_type") == "BREAKOUT":
-            top_target = s
-            break
-    # 若無突破則挑選外資波段買超最高之龍頭
-    if not top_target and qualified_stocks:
-        top_target = max(qualified_stocks, key=lambda x: x.get("foreign_cum_buy", 0))
+            score += 200.0
+            vol_spike = s.get("vol_spike_ratio", 1.0)
+            score += min(vol_spike * 15, 60.0) # 放量倍數加分
+        else:
+            # 潛伏蓄勢：振幅越緊密、壓縮越極致加分越高
+            amp = s.get("price_amplitude_20d", 15.0)
+            score += max(0, (15.0 - amp) * 5)
+            if "極致壓縮" in s.get("vcp_status", ""):
+                score += 35.0
+            elif "Dead Quiet" in s.get("vcp_status", ""):
+                score += 30.0
+
+        # 2. Alpha RS 動能強度
+        alpha = s.get("alpha_rs", 100.0)
+        score += (alpha - 100.0) * 1.5
+
+        # 3. 外資波段吸籌強度 (買超天數比例與連續度)
+        f_ratio = s.get("foreign_buy_ratio", 0.0)
+        score += f_ratio * 50.0
+
+        # 4. 集保千張大戶動態增減 (大戶增量是飆股靈魂)
+        chg_1000 = s.get("change_1000_1w", 0.0)
+        if chg_1000 > 0:
+            score += min(chg_1000 * 30, 60.0)
+        pct_1000 = s.get("pct_1000", 0.0)
+        if 35.0 <= pct_1000 <= 75.0:
+            score += 20.0 # 處於黃金大戶成長區間
+
+        return round(score, 1)
+
+    top_target = None
+    if qualified_stocks:
+        top_target = max(qualified_stocks, key=calculate_sepa_rank_score)
+        top_score = calculate_sepa_rank_score(top_target)
+        print(f"  -> 今日綜合評分最高焦點標的：{top_target['ticker']} {top_target['name']} (綜合得分: {top_score}分)")
 
     fundamental_report = ""
     if top_target:

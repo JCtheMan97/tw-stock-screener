@@ -90,14 +90,28 @@ def parse_tdcc_csv(csv_text):
     return report_date, records
 
 def load_tdcc_history():
-    """載入歷史週記錄以計算大戶增減變化"""
+    """載入歷史週記錄以計算大戶增減變化，若快取不足自動讀取 tdcc_baseline.json"""
+    history = {}
     if os.path.exists(TDCC_HISTORY_FILE):
         try:
             with open(TDCC_HISTORY_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                history = json.load(f)
         except Exception:
             pass
-    return {}
+
+    # 若歷史記錄不足 2 週，自動合併專案基準歷史週 tdcc_baseline.json
+    baseline_path = os.path.join(os.path.dirname(__file__), "tdcc_baseline.json")
+    if os.path.exists(baseline_path):
+        try:
+            with open(baseline_path, "r", encoding="utf-8") as bf:
+                b_obj = json.load(bf)
+                b_date = b_obj.get("date", "20261016")
+                if b_date not in history:
+                    history[b_date] = b_obj.get("data", {})
+        except Exception:
+            pass
+
+    return history
 
 def save_tdcc_history(history_data):
     """保存歷史週記錄"""
@@ -189,6 +203,29 @@ def get_tdcc_big_holders_summary(force_refresh=False):
 
     print(f"[TDCC] 成功解析 {len(result)} 檔標的之集保大戶數據 (日期: {report_date})")
     return result
+
+def get_stock_tdcc_info(ticker):
+    """
+    提供自選股或特定標的查詢即時/快取的千張大戶與週增減變化
+    """
+    cache_daily_file = os.path.join(CACHE_DIR, "tdcc_latest.json")
+    if os.path.exists(cache_daily_file):
+        try:
+            with open(cache_daily_file, "r", encoding="utf-8") as f:
+                d = json.load(f).get("data", {})
+                if ticker in d:
+                    return d[ticker]
+        except Exception:
+            pass
+
+    summary = get_tdcc_big_holders_summary()
+    return summary.get(ticker, {
+        "pct_1000": 0.0,
+        "pct_400": 0.0,
+        "pct_retail": 0.0,
+        "change_1000_1w": 0.0,
+        "is_increasing": False
+    })
 
 if __name__ == "__main__":
     res = get_tdcc_big_holders_summary(force_refresh=True)

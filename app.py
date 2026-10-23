@@ -27,6 +27,9 @@ from config import CACHE_DIR
 from main import run_screener_pipeline
 from fundamental_gate import run_fundamental_check
 from industry_mapping import get_stock_industry
+from stock_db import get_stock_info
+from sepa_engine import evaluate_stock_sepa
+from tdcc_fetcher import get_stock_tdcc_info
 
 # --- 頁面全域設定 ---
 st.set_page_config(
@@ -286,6 +289,14 @@ with tab_clusters:
                     chg_color = "#FF4B4B" if float(m.get("change", 0)) > 0 else ("#00D26A" if float(m.get("change", 0)) < 0 else "#AAAAAA")
                     chg_sign = "+" if float(m.get("change", 0)) > 0 else ""
                     
+                    chg_1000 = float(m.get('change_1000_1w', 0))
+                    if chg_1000 > 0:
+                        tdcc_str = f"週增 <span style='color:#FF4B4B; font-weight:700;'>{chg_1000:+.2f}% 🔥</span>"
+                    elif chg_1000 < 0:
+                        tdcc_str = f"週增 <span style='color:#00D26A;'>{chg_1000:+.2f}%</span>"
+                    else:
+                        tdcc_str = "週增 0.00%"
+
                     st.markdown(f"""
                     <div class="stock-card">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -298,7 +309,7 @@ with tab_clusters:
                         <div style="font-size:0.85rem; line-height:1.7;">
                             • 📦 <b>20日振幅</b>: {m.get('price_amplitude_20d')}% ｜ {m.get('vcp_status', '')}<br>
                             • 🏛️ <b>外資波段</b>: +{m.get('foreign_cum_buy', 0):,}張 (買超天數比 {int(float(m.get('foreign_buy_ratio', 0))*100)}%)<br>
-                            • 👥 <b>千張大戶</b>: {m.get('pct_1000')}% (週增 {float(m.get('change_1000_1w', 0)):+.2f}%)<br>
+                            • 👥 <b>千張大戶</b>: {m.get('pct_1000')}% ({tdcc_str})<br>
                             • 📈 <b>動能狀態</b>: {m.get('alpha_status', '強於大盤')} (RS: {m.get('alpha_rs', 100)})
                         </div>
                     </div>
@@ -320,6 +331,14 @@ with tab_singles:
                 chg_color = "#FF4B4B" if float(m.get("change", 0)) > 0 else ("#00D26A" if float(m.get("change", 0)) < 0 else "#AAAAAA")
                 chg_sign = "+" if float(m.get("change", 0)) > 0 else ""
                 
+                chg_1000 = float(m.get('change_1000_1w', 0))
+                if chg_1000 > 0:
+                    tdcc_str = f"週增 <span style='color:#FF4B4B; font-weight:700;'>{chg_1000:+.2f}% 🔥</span>"
+                elif chg_1000 < 0:
+                    tdcc_str = f"週增 <span style='color:#00D26A;'>{chg_1000:+.2f}%</span>"
+                else:
+                    tdcc_str = "週增 0.00%"
+
                 st.markdown(f"""
                 <div class="stock-card">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -333,7 +352,7 @@ with tab_singles:
                     <div style="font-size:0.85rem; line-height:1.7;">
                         • 📦 <b>20日振幅</b>: {m.get('price_amplitude_20d')}% ｜ {m.get('vcp_status', '')}<br>
                         • 🏛️ <b>外資波段</b>: +{m.get('foreign_cum_buy', 0):,}張 (買超天數比 {int(float(m.get('foreign_buy_ratio', 0))*100)}%)<br>
-                        • 👥 <b>千張大戶</b>: {m.get('pct_1000')}% (週增 {float(m.get('change_1000_1w', 0)):+.2f}%)<br>
+                        • 👥 <b>千張大戶</b>: {m.get('pct_1000')}% ({tdcc_str})<br>
                         • 📈 <b>動能狀態</b>: {m.get('alpha_status', '強於大盤')} (RS: {m.get('alpha_rs', 100)})
                     </div>
                 </div>
@@ -445,25 +464,93 @@ with tab_fundamental:
         st.info("今日無首選焦點標的。")
 
 # ==========================================
-# TAB 5: 自選股即時基本面特檢
+# TAB 5: 自選股即時 SEPA 全方位特檢
 # ==========================================
 with tab_search:
-    st.subheader("🔍 自選個股即時 SEPA 深度基本面特檢")
-    st.write("輸入任一上市櫃公司股票代碼，系統將即時抓取最新財報、計算三率雙重擴張、EBITDA、FCF 與 Code 33 加速診斷：")
+    st.subheader("🔍 自選個股即時 SEPA 全方位健檢（技術面 Stage 2 + 基本面 3D 深度特檢）")
+    st.write("輸入任一上市櫃公司股票代碼或名稱（例如 `2382`、`廣達`、`3017`、`2330`），系統將自動解析個股身分、即時運算 Minervini 趨勢模板、20日振幅壓縮、0050 Alpha RS，並調用最新季度財報執行三率雙重擴張、EBITDA、FCF 與 3D 成長性客觀量化診斷：")
     
-    col_in1, col_in2 = st.columns([2, 1])
+    col_in1, col_in2 = st.columns([3, 1])
     with col_in1:
-        query_code = st.text_input("請輸入台股代碼 (例如 2382, 3017, 3443, 2330)：", value="2382")
+        query_code = st.text_input("請輸入台股代碼或中文名稱：", value="2382", placeholder="輸入如 2382, 廣達, 3017, 奇鋐, 2330")
     with col_in2:
         st.markdown("<br>", unsafe_allow_html=True)
-        btn_check = st.button("⚡ 開始深度基本面特檢", use_container_width=True)
+        btn_check = st.button("⚡ 開始全方位 SEPA 深度健檢", use_container_width=True)
         
-    if btn_check and query_code:
-        with st.spinner(f"正在對 {query_code} 進行深度基本面特檢（調用最新財報三率、FCF與法說展望）..."):
-            sec, sub_ind = get_stock_industry(query_code)
-            rep = run_fundamental_check(query_code.strip(), "", sec, sub_ind)
-            st.markdown("---")
-            st.markdown(rep)
+    if (btn_check or query_code) and query_code:
+        s_info = get_stock_info(query_code)
+        if not s_info:
+            st.error(f"❌ 查無此股票代碼或名稱：【{query_code}】，請重新確認輸入。")
+        else:
+            ticker_c = s_info["ticker"]
+            name_c = s_info["name"]
+            sector_c = s_info["sector"]
+            sub_c = s_info["sub_industry"]
+            yf_sym = s_info["yf_symbol"]
+            mkt_c = s_info["market"]
+
+            # 標的抬頭卡片
+            st.markdown(f"""
+            <div style="background: rgba(255, 255, 255, 0.05); padding: 12px 18px; border-radius: 8px; border-left: 4px solid #00B4D8; margin-top: 10px; margin-bottom: 20px;">
+                <span style="font-size: 1.3rem; font-weight: 700; color: #F1F5F9;">🎯 目標公司：{ticker_c} {name_c} ({mkt_c})</span><br>
+                <span style="color: #94A3B8; font-size: 0.95rem;">📊 所屬產業板塊：<b>{sector_c}</b> ｜ 細分次族群：<b>{sub_c}</b></span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            with st.spinner(f"正在對 {ticker_c} {name_c} 進行雙軌特檢（歷史 K 線量價 + 最新財報數據）..."):
+                # 1. 技術面運算
+                try:
+                    t_obj = yf.Ticker(yf_sym)
+                    df_k = t_obj.history(period="1y")
+                    
+                    if df_k is not None and len(df_k) >= 50:
+                        t_0050 = yf.Ticker("0050.TW")
+                        df_0050 = t_0050.history(period="1y")
+                        sepa_t = evaluate_stock_sepa(yf_sym, df_k, df_0050)
+                        
+                        p_now = float(df_k['Close'].iloc[-1])
+                        bias50 = sepa_t.get('bias_50', 0.0)
+                        amp20 = sepa_t.get('price_amplitude_20d', 0.0)
+                        is_tight = sepa_t.get('is_tight_range', False)
+                        trend_ok = sepa_t.get('trend_template_ok', False)
+                        alpha_rs = sepa_t.get('alpha_rs', 0.0)
+                        alpha_status = sepa_t.get('alpha_status', '一般')
+                        piv_10 = df_k['High'].iloc[-11:-1].max() if len(df_k) >= 11 else p_now
+                        is_breakout = p_now >= piv_10
+                        
+                        tdcc_info = get_stock_tdcc_info(ticker_c)
+                        pct_1000_val = tdcc_info.get('pct_1000', 0.0)
+                        chg_1000_val = tdcc_info.get('change_1000_1w', 0.0)
+                        
+                        st.markdown("### 📈 【第一關：SEPA 技術面 & 籌碼體檢】")
+                        m1, m2, m3, m4, m5 = st.columns(5)
+                        with m1:
+                            st.metric("當前收盤價", f"${p_now:.2f}", f"50MA 乖離: {bias50:+}%")
+                        with m2:
+                            trend_label = "✅ Stage 2 多頭" if trend_ok else "⚠️ 未符合模板"
+                            st.metric("趨勢模板", trend_label, "50>150>200MA" if trend_ok else "均線弱勢或糾結")
+                        with m3:
+                            amp_label = f"{amp20}% (緊縮)" if is_tight else f"{amp20}% (發散)"
+                            st.metric("20日價格振幅", amp_label, "✅ 狹幅橫盤" if is_tight else "⚠️ 震盪過大")
+                        with m4:
+                            st.metric("0050 Alpha RS", f"{alpha_rs:.1f}", f"{alpha_status}")
+                        with m5:
+                            st.metric("千張大戶籌碼", f"{pct_1000_val:.2f}%", f"週增 {chg_1000_val:+.2f}%" if chg_1000_val != 0 else "持平")
+
+                        # 技術細節條列
+                        with st.expander("🔍 檢視技術面各項關鍵數值與頸線位置", expanded=False):
+                            st.write(f"- **10 日 Pivot 頸線**：`${piv_10:.2f}`（當前狀態：{'🚀 突破頸線放量中' if is_breakout else '⏳ 蓄勢待發，尚未突破'}）")
+                            st.write(f"- **VCP 量價收縮狀態**：{sepa_t.get('vcp_status', '量縮整理')}")
+                            st.write(f"- **歷史日 K 樣本數**：{len(df_k)} 根交易日")
+                            if sepa_t.get("fail_reasons"):
+                                st.write(f"- **技術面未達標項目**：{', '.join(sepa_t['fail_reasons'])}")
+                except Exception as ex_tech:
+                    st.info(f"ℹ️ 即時歷史 K 線量價連線獲取中或非交易時段（{ex_tech}），已優先呈現基本面深度特檢：")
+
+                # 2. 深度基本面報告 (動態六大模組)
+                st.markdown("### 💎 【第二關：SEPA 3D 成長性 & 深度基本面特檢】")
+                rep = run_fundamental_check(ticker_c, name_c, sector_c, sub_c)
+                st.markdown(rep)
 
 # ==========================================
 # TAB 6: 30天實質績效回測數據
