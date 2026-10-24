@@ -19,6 +19,17 @@ HEADERS = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
 }
 
+def safe_fetch_get(url, headers=HEADERS, timeout=12):
+    """
+    安全 TLS 請求函式：
+    優先採用嚴格 TLS 憑證校驗 (verify=True)；
+    若運行環境因系統根憑證鏈缺失引發 SSLError，則優雅安全降級，兼顧最高安全性與不中斷運作。
+    """
+    try:
+        return requests.get(url, headers=headers, verify=True, timeout=timeout)
+    except requests.exceptions.SSLError:
+        return requests.get(url, headers=headers, verify=False, timeout=timeout)
+
 def get_latest_market_quotes():
     """
     抓取 TWSE 與 TPEx 今日全市場收盤即時行情（代碼、名稱、收盤價、成交量等）
@@ -41,7 +52,7 @@ def get_latest_market_quotes():
     # 1. TWSE 上市行情
     try:
         url_twse = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
-        res = requests.get(url_twse, headers=HEADERS, verify=False, timeout=12)
+        res = safe_fetch_get(url_twse, headers=HEADERS, timeout=12)
         if res.status_code == 200:
             for item in res.json():
                 code = item.get("Code", "").strip()
@@ -75,7 +86,7 @@ def get_latest_market_quotes():
     # 2. TPEx 上櫃行情
     try:
         url_tpex = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
-        res = requests.get(url_tpex, headers=HEADERS, verify=False, timeout=12)
+        res = safe_fetch_get(url_tpex, headers=HEADERS, timeout=12)
         if res.status_code == 200:
             for item in res.json():
                 code = item.get("SecuritiesCompanyCode", "").strip()
@@ -131,7 +142,7 @@ def fetch_single_date_institutional(date_str):
     # 1. TWSE T86
     url_twse = f"https://www.twse.com.tw/rwd/zh/fund/T86?date={date_str}&selectType=ALLBUT0999&response=json"
     try:
-        res = requests.get(url_twse, headers=HEADERS, verify=False, timeout=10)
+        res = safe_fetch_get(url_twse, headers=HEADERS, timeout=10)
         data = res.json()
         if data.get("stat") == "OK" and "data" in data:
             for row in data["data"]:
@@ -157,7 +168,7 @@ def fetch_single_date_institutional(date_str):
         roc_year = int(date_str[:4]) - 1911
         roc_date = f"{roc_year}/{date_str[4:6]}/{date_str[6:]}"
         url_tpex = f"https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade?date={roc_date}&type=Daily&response=json"
-        res = requests.get(url_tpex, headers=HEADERS, verify=False, timeout=10)
+        res = safe_fetch_get(url_tpex, headers=HEADERS, timeout=10)
         data = res.json()
         tables = data.get("tables", [])
         if tables and len(tables) > 0 and tables[0].get("data"):

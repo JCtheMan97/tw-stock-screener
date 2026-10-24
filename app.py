@@ -27,8 +27,17 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
+import html
 import importlib
 from config import CACHE_DIR
+
+# 防禦性載入選股引擎
+try:
+    from main import run_screener_pipeline
+except Exception:
+    def run_screener_pipeline(*args, **kwargs):
+        raise RuntimeError("選股引擎載入失敗，請確認 main.py 及其相依套件是否完整。")
+
 try:
     import fundamental_gate
     importlib.reload(fundamental_gate)
@@ -431,27 +440,44 @@ with tab_clusters:
             for i, m in enumerate(g.get("members", [])):
                 col = cols[i % min(count, 3)]
                 with col:
-                    sig_badge = '<span class="badge-breakout">🚀 建議建倉 (突破)</span>' if m.get("signal_type") == "BREAKOUT" else '<span class="badge-stealth">🏹 潛伏蓄勢</span>'
+                    if m.get("is_core_king"):
+                        sig_badge = '<span class="badge-breakout" style="background: linear-gradient(135deg, #F59E0B, #D97706);">👑 核心權王</span>'
+                    elif m.get("signal_type") == "BREAKOUT":
+                        sig_badge = '<span class="badge-breakout">🚀 建議建倉 (突破)</span>'
+                    else:
+                        sig_badge = '<span class="badge-stealth">🏹 潛伏蓄勢</span>'
                     chg_color = "#FF4B4B" if float(m.get("change", 0)) > 0 else ("#00D26A" if float(m.get("change", 0)) < 0 else "#AAAAAA")
                     chg_sign = "+" if float(m.get("change", 0)) > 0 else ""
                     
                     chg_1000 = float(m.get('change_1000_1w', 0))
+                    chg_1m = float(m.get('change_1000_1m', chg_1000))
                     if chg_1000 > 0:
-                        tdcc_str = f"週增 <span style='color:#FF4B4B; font-weight:700;'>{chg_1000:+.2f}% 🔥</span>"
+                        tdcc_w_str = f"週增 <span style='color:#FF4B4B; font-weight:700;'>{chg_1000:+.2f}% 🔥</span>"
                     elif chg_1000 < 0:
-                        tdcc_str = f"週增 <span style='color:#00D26A;'>{chg_1000:+.2f}%</span>"
+                        tdcc_w_str = f"週增 <span style='color:#00D26A;'>{chg_1000:+.2f}%</span>"
                     else:
-                        tdcc_str = "週增 0.00%"
+                        tdcc_w_str = "週增 0.00%"
+
+                    if chg_1m > 0:
+                        tdcc_m_str = f"月增 <span style='color:#FF4B4B; font-weight:700;'>{chg_1m:+.2f}%</span>"
+                    elif chg_1m < 0:
+                        tdcc_m_str = f"月增 <span style='color:#00D26A;'>{chg_1m:+.2f}%</span>"
+                    else:
+                        tdcc_m_str = "月增 0.00%"
+                    
+                    tdcc_combined = f"{tdcc_w_str} ｜ {tdcc_m_str}"
 
                     f_cum = m.get('foreign_cum_buy', 0)
                     f_amt_yi = m.get('foreign_cum_amount_yi')
                     if f_amt_yi is None:
                         f_amt_yi = round(m.get('foreign_cum_amount', f_cum * float(m.get('close', 0)) * 1000) / 100_000_000, 2)
 
+                    m_ticker = html.escape(str(m.get('ticker', '')))
+                    m_name = html.escape(str(m.get('name', '')))
                     st.markdown(f"""
                     <div class="stock-card">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <h4 style="margin:0;"><b>{m.get('ticker')} {m.get('name')}</b></h4>
+                            <h4 style="margin:0;"><b>{m_ticker} {m_name}</b></h4>
                             {sig_badge}
                         </div>
                         <div style="font-size:1.3rem; font-weight:700; margin: 8px 0; color: {chg_color};">
@@ -460,7 +486,7 @@ with tab_clusters:
                         <div style="font-size:0.85rem; line-height:1.7;">
                             • 📦 <b>20日振幅</b>: {m.get('price_amplitude_20d')}% ｜ {m.get('vcp_status', '')}<br>
                             • 🏛️ <b>外資波段</b>: +{f_amt_yi}億 (+{f_cum:,}張 ｜ 買超天數比 {int(float(m.get('foreign_buy_ratio', 0))*100)}%)<br>
-                            • 👥 <b>千張大戶</b>: {m.get('pct_1000')}% ({tdcc_str})<br>
+                            • 👥 <b>千張大戶</b>: {m.get('pct_1000')}% ({tdcc_combined})<br>
                             • 📈 <b>動能狀態</b>: {m.get('alpha_status', '強於大盤')} (RS: {m.get('alpha_rs', 100)})
                         </div>
                     </div>
@@ -478,37 +504,56 @@ with tab_singles:
         for idx, m in enumerate(singles):
             col_s = cols_s[idx % 3]
             with col_s:
-                sig_badge = '<span class="badge-breakout">🚀 建議建倉 (突破)</span>' if m.get("signal_type") == "BREAKOUT" else '<span class="badge-stealth">🏹 潛伏蓄勢</span>'
+                if m.get("is_core_king"):
+                    sig_badge = '<span class="badge-breakout" style="background: linear-gradient(135deg, #F59E0B, #D97706);">👑 核心權王</span>'
+                elif m.get("signal_type") == "BREAKOUT":
+                    sig_badge = '<span class="badge-breakout">🚀 建議建倉 (突破)</span>'
+                else:
+                    sig_badge = '<span class="badge-stealth">🏹 潛伏蓄勢</span>'
                 chg_color = "#FF4B4B" if float(m.get("change", 0)) > 0 else ("#00D26A" if float(m.get("change", 0)) < 0 else "#AAAAAA")
                 chg_sign = "+" if float(m.get("change", 0)) > 0 else ""
                 
                 chg_1000 = float(m.get('change_1000_1w', 0))
+                chg_1m = float(m.get('change_1000_1m', chg_1000))
                 if chg_1000 > 0:
-                    tdcc_str = f"週增 <span style='color:#FF4B4B; font-weight:700;'>{chg_1000:+.2f}% 🔥</span>"
+                    tdcc_w_str = f"週增 <span style='color:#FF4B4B; font-weight:700;'>{chg_1000:+.2f}% 🔥</span>"
                 elif chg_1000 < 0:
-                    tdcc_str = f"週增 <span style='color:#00D26A;'>{chg_1000:+.2f}%</span>"
+                    tdcc_w_str = f"週增 <span style='color:#00D26A;'>{chg_1000:+.2f}%</span>"
                 else:
-                    tdcc_str = "週增 0.00%"
+                    tdcc_w_str = "週增 0.00%"
+
+                if chg_1m > 0:
+                    tdcc_m_str = f"月增 <span style='color:#FF4B4B; font-weight:700;'>{chg_1m:+.2f}%</span>"
+                elif chg_1m < 0:
+                    tdcc_m_str = f"月增 <span style='color:#00D26A;'>{chg_1m:+.2f}%</span>"
+                else:
+                    tdcc_m_str = "月增 0.00%"
+                
+                tdcc_combined = f"{tdcc_w_str} ｜ {tdcc_m_str}"
 
                 f_cum = m.get('foreign_cum_buy', 0)
                 f_amt_yi = m.get('foreign_cum_amount_yi')
                 if f_amt_yi is None:
                     f_amt_yi = round(m.get('foreign_cum_amount', f_cum * float(m.get('close', 0)) * 1000) / 100_000_000, 2)
 
+                s_ticker = html.escape(str(m.get('ticker', '')))
+                s_name = html.escape(str(m.get('name', '')))
+                s_sub = html.escape(str(m.get('sub_industry', m.get('sector', '電子零組件'))))
+
                 st.markdown(f"""
                 <div class="stock-card">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <h4 style="margin:0;"><b>{m.get('ticker')} {m.get('name')}</b></h4>
+                        <h4 style="margin:0;"><b>{s_ticker} {s_name}</b></h4>
                         {sig_badge}
                     </div>
-                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">【{m.get('sub_industry', m.get('sector', '電子零組件'))}】</div>
+                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">【{s_sub}】</div>
                     <div style="font-size:1.3rem; font-weight:700; margin: 8px 0; color: {chg_color};">
                         ${float(m.get('close', 0)):.2f} <span style="font-size:0.9rem;">({chg_sign}{float(m.get('change', 0)):.2f})</span>
                     </div>
                     <div style="font-size:0.85rem; line-height:1.7;">
                         • 📦 <b>20日振幅</b>: {m.get('price_amplitude_20d')}% ｜ {m.get('vcp_status', '')}<br>
                         • 🏛️ <b>外資波段</b>: +{f_amt_yi}億 (+{f_cum:,}張 ｜ 買超天數比 {int(float(m.get('foreign_buy_ratio', 0))*100)}%)<br>
-                        • 👥 <b>千張大戶</b>: {m.get('pct_1000')}% ({tdcc_str})<br>
+                        • 👥 <b>千張大戶</b>: {m.get('pct_1000')}% ({tdcc_combined})<br>
                         • 📈 <b>動能狀態</b>: {m.get('alpha_status', '強於大盤')} (RS: {m.get('alpha_rs', 100)})
                     </div>
                 </div>
@@ -549,55 +594,72 @@ with tab_chart:
                 df_hist = pd.DataFrame()
                 
             if df_hist is not None and not df_hist.empty and len(df_hist) >= 30:
-                # 計算均線
-                c_s = df_hist['Close']
-                df_hist['SMA50'] = c_s.rolling(50).mean()
-                df_hist['SMA150'] = c_s.rolling(150).mean()
-                df_hist['SMA200'] = c_s.rolling(200).mean()
-                df_hist['Vol_MA20'] = df_hist['Volume'].rolling(20).mean()
+                # 確保 DataFrame 結構標準化 (消除 yfinance MultiIndex 欄位雜訊)
+                if isinstance(df_hist.columns, pd.MultiIndex):
+                    df_hist.columns = df_hist.columns.get_level_values(0)
+
+                # 安全提取純量一維 Series
+                c_s = pd.Series(df_hist['Close'].values.flatten(), index=df_hist.index, dtype=float)
+                o_s = pd.Series(df_hist['Open'].values.flatten(), index=df_hist.index, dtype=float)
+                h_s = pd.Series(df_hist['High'].values.flatten(), index=df_hist.index, dtype=float)
+                l_s = pd.Series(df_hist['Low'].values.flatten(), index=df_hist.index, dtype=float)
+                v_s = pd.Series(df_hist['Volume'].values.flatten(), index=df_hist.index, dtype=float)
+
+                sma50 = c_s.rolling(50).mean()
+                sma150 = c_s.rolling(150).mean()
+                sma200 = c_s.rolling(200).mean()
+                vol_ma20 = v_s.rolling(20).mean()
                 
-                # 計算近 10 日 Pivot 頸線
-                piv_10 = df_hist['High'].iloc[-11:-1].max() if len(df_hist) >= 11 else df_hist['High'].iloc[-1]
+                # 計算近 10 日 Pivot 頸線 (安全轉型 float)
+                piv_10 = float(h_s.iloc[-11:-1].max()) if len(h_s) >= 11 else float(h_s.iloc[-1])
+
+                # 日期字串化，徹底消除週末空白斷裂假跳空 (連續交易日呈現)
+                date_labels = [d.strftime('%Y-%m-%d') for d in df_hist.index]
 
                 # 建立雙子圖 (上方 K 線 + 均線，下方成交量)
                 fig = make_subplots(
                     rows=2, cols=1, shared_xaxes=True,
-                    vertical_spacing=0.04, row_heights=[0.75, 0.25]
+                    vertical_spacing=0.04, row_heights=[0.72, 0.28]
                 )
 
-                # K 線 (台股習慣: 紅漲綠跌)
+                # K 線 (台股標準：紅漲綠跌，實體填色)
                 fig.add_trace(
                     go.Candlestick(
-                        x=df_hist.index,
-                        open=df_hist['Open'],
-                        high=df_hist['High'],
-                        low=df_hist['Low'],
-                        close=df_hist['Close'],
+                        x=date_labels,
+                        open=o_s,
+                        high=h_s,
+                        low=l_s,
+                        close=c_s,
                         name="K線 (紅漲綠跌)",
                         increasing_line_color='#FF4B4B',
-                        decreasing_line_color='#00D26A'
+                        increasing_fillcolor='#FF4B4B',
+                        decreasing_line_color='#00D26A',
+                        decreasing_fillcolor='#00D26A'
                     ),
                     row=1, col=1
                 )
 
                 # 均線軌道
-                fig.add_trace(go.Scatter(x=df_hist.index, y=df_hist['SMA50'], line=dict(color='#00B4D8', width=1.5), name="50MA"), row=1, col=1)
-                fig.add_trace(go.Scatter(x=df_hist.index, y=df_hist['SMA150'], line=dict(color='#F77F00', width=1.5), name="150MA"), row=1, col=1)
-                fig.add_trace(go.Scatter(x=df_hist.index, y=df_hist['SMA200'], line=dict(color='#E63946', width=2), name="200MA (長期生命線)"), row=1, col=1)
+                fig.add_trace(go.Scatter(x=date_labels, y=sma50, line=dict(color='#00B4D8', width=1.5), name="50MA"), row=1, col=1)
+                fig.add_trace(go.Scatter(x=date_labels, y=sma150, line=dict(color='#F77F00', width=1.5), name="150MA"), row=1, col=1)
+                fig.add_trace(go.Scatter(x=date_labels, y=sma200, line=dict(color='#E63946', width=2), name="200MA (長期生命線)"), row=1, col=1)
 
                 # 10日 Pivot 頸線水平線
                 fig.add_hline(y=piv_10, line_dash="dash", line_color="#D946EF", line_width=1.5,
                               annotation_text=f"10日 Pivot 頸線 (${piv_10:.2f})", annotation_position="top left", row=1, col=1)
 
                 # 下方成交量
-                vol_colors = ['#FF4B4B' if c >= o else '#00D26A' for c, o in zip(df_hist['Close'], df_hist['Open'])]
-                fig.add_trace(go.Bar(x=df_hist.index, y=df_hist['Volume'], marker_color=vol_colors, name="成交量"), row=2, col=1)
-                fig.add_trace(go.Scatter(x=df_hist.index, y=df_hist['Vol_MA20'], line=dict(color='#E2E8F0', width=1.2), name="20日均量"), row=2, col=1)
+                vol_colors = ['#FF4B4B' if c >= o else '#00D26A' for c, o in zip(c_s, o_s)]
+                fig.add_trace(go.Bar(x=date_labels, y=v_s, marker_color=vol_colors, name="成交量"), row=2, col=1)
+                fig.add_trace(go.Scatter(x=date_labels, y=vol_ma20, line=dict(color='#E2E8F0', width=1.2), name="20日均量"), row=2, col=1)
 
+                # 全面關閉 rangeslider 並設為 category 消除空隙
+                fig.update_xaxes(type='category', rangeslider_visible=False)
                 fig.update_layout(
                     title=f"<b>{ticker_code} {st_name}</b> ─ Minervini 趨勢線型與 VCP 壓縮分析",
                     height=600,
                     xaxis_rangeslider_visible=False,
+                    xaxis2_rangeslider_visible=False,
                     template="plotly_dark",
                     margin=dict(l=40, r=40, t=50, b=40),
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
@@ -636,14 +698,14 @@ with tab_search:
     if (btn_check or query_code) and query_code:
         s_info = get_stock_info(query_code)
         if not s_info:
-            st.error(f"❌ 查無此股票代碼或名稱：【{query_code}】，請重新確認輸入。")
+            st.error(f"❌ 查無此股票代碼或名稱：【{html.escape(str(query_code))}】，請重新確認輸入。")
         else:
-            ticker_c = s_info["ticker"]
-            name_c = s_info["name"]
-            sector_c = s_info["sector"]
-            sub_c = s_info["sub_industry"]
-            yf_sym = s_info["yf_symbol"]
-            mkt_c = s_info["market"]
+            ticker_c = html.escape(str(s_info.get("ticker", "")))
+            name_c = html.escape(str(s_info.get("name", "")))
+            sector_c = html.escape(str(s_info.get("sector", "")))
+            sub_c = html.escape(str(s_info.get("sub_industry", "")))
+            yf_sym = s_info.get("yf_symbol", "")
+            mkt_c = html.escape(str(s_info.get("market", "")))
 
             # 標的抬頭卡片
             st.markdown(f"""

@@ -192,10 +192,12 @@ def get_tdcc_big_holders_summary(force_refresh=False):
                 del history[d]
         save_tdcc_history(history)
 
-    # 計算較上週之增減 (1週變動 & 4週變動)
+    # 計算較上週與近一個月 (約4週) 之增減
     sorted_dates = sorted(history.keys(), reverse=True)
     prev_date = sorted_dates[1] if len(sorted_dates) > 1 else None
+    month_date = sorted_dates[min(4, len(sorted_dates)-1)] if len(sorted_dates) > 2 else prev_date
     prev_records = history.get(prev_date, {}) if prev_date else {}
+    month_records = history.get(month_date, {}) if month_date else {}
 
     result = {}
     for ticker, info in latest_records.items():
@@ -208,13 +210,21 @@ def get_tdcc_big_holders_summary(force_refresh=False):
             prev_pct_1000 = prev_records[ticker]["pct_1000"]
             change_1000 = round(pct_1000 - prev_pct_1000, 2)
 
+        change_1000_1m = change_1000
+        if month_records and ticker in month_records:
+            month_pct_1000 = month_records[ticker]["pct_1000"]
+            change_1000_1m = round(pct_1000 - month_pct_1000, 2)
+
+        is_increasing = (change_1000 > 0) or (change_1000_1m > 0)
+
         result[ticker] = {
             "date": report_date,
             "pct_1000": pct_1000,
             "pct_400": pct_400,
             "pct_retail": pct_retail,
             "change_1000_1w": change_1000,
-            "is_increasing": change_1000 > 0 or pct_1000 >= 60.0 # 若週增正或本身即高度集中 (>60%)
+            "change_1000_1m": change_1000_1m,
+            "is_increasing": is_increasing
         }
 
     for cdf in cache_daily_candidates:
@@ -252,6 +262,7 @@ def get_stock_tdcc_info(ticker):
         "pct_400": 0.0,
         "pct_retail": 0.0,
         "change_1000_1w": 0.0,
+        "change_1000_1m": 0.0,
         "is_increasing": False
     })
 

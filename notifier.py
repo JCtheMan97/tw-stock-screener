@@ -62,12 +62,16 @@ def format_screener_report(clustered_groups, single_stocks, trade_date_str=None)
                 f_ratio = int(m.get("foreign_buy_ratio", 0) * 100)
                 pct_1000 = m.get("pct_1000", 0.0)
                 chg_1000 = m.get("change_1000_1w", 0.0)
-                chg_1000_str = f"+{chg_1000}%" if chg_1000 > 0 else f"{chg_1000}%"
+                chg_1m = m.get("change_1000_1m", chg_1000)
+                chg_1000_str = f"+{chg_1000:.2f}%" if chg_1000 > 0 else f"{chg_1000:.2f}%"
+                chg_1m_str = f"+{chg_1m:.2f}%" if chg_1m > 0 else f"{chg_1m:.2f}%"
                 alpha_st = m.get("alpha_status", "強於大盤")
 
                 price_str = f"${float(close):.2f}"
                 sig_type = m.get("signal_type", "STEALTH")
                 action_title = m.get("action_title", "🏹 潛伏蓄勢")
+                if m.get("is_core_king"):
+                    action_title = "👑 核心權王 (超級多頭霸主)"
                 
                 lines.append(f"• {ticker} {name}  {price_str} ({change_str})")
                 lines.append(f"  💡 訊號決策：{action_title}")
@@ -79,7 +83,7 @@ def format_screener_report(clustered_groups, single_stocks, trade_date_str=None)
                     lines.append(f"  📦 橫盤狀態：20日振幅僅 {amp}% | {vcp_st}")
 
                 lines.append(f"  🏛️ 外資吸籌：20日累計買超 +{f_amt_yi}億元 (+{f_cum:,}張 | 買超天數比 {f_ratio}%)")
-                lines.append(f"  👥 千張大戶：{pct_1000}% (週增 {chg_1000_str})")
+                lines.append(f"  👥 千張大戶：{pct_1000}% (週增 {chg_1000_str} ｜ 月增 {chg_1m_str})")
                 lines.append(f"  📈 動能指標：Minervini 7 條件全符 | {alpha_st}")
                 lines.append("")
         lines.append("━━━━━━━━━━━━━━━━━━━━")
@@ -99,11 +103,15 @@ def format_screener_report(clustered_groups, single_stocks, trade_date_str=None)
             f_ratio = int(m.get("foreign_buy_ratio", 0) * 100)
             pct_1000 = m.get("pct_1000", 0.0)
             chg_1000 = m.get("change_1000_1w", 0.0)
-            chg_1000_str = f"+{chg_1000}%" if chg_1000 > 0 else f"{chg_1000}%"
+            chg_1m = m.get("change_1000_1m", chg_1000)
+            chg_1000_str = f"+{chg_1000:.2f}%" if chg_1000 > 0 else f"{chg_1000:.2f}%"
+            chg_1m_str = f"+{chg_1m:.2f}%" if chg_1m > 0 else f"{chg_1m:.2f}%"
             amp = m["price_amplitude_20d"]
             vcp_st = m["vcp_status"]
             sig_type = m.get("signal_type", "STEALTH")
             action_title = m.get("action_title", "🏹 潛伏蓄勢")
+            if m.get("is_core_king"):
+                action_title = "👑 核心權王 (超級多頭霸主)"
             alpha_st = m.get("alpha_status", "強於大盤")
 
             lines.append(f"• {ticker} {name}  {price_str} ({change_str}) | 【{sub_name}】")
@@ -120,7 +128,7 @@ def format_screener_report(clustered_groups, single_stocks, trade_date_str=None)
                 f_amt_yi = round(m.get("foreign_cum_amount", f_cum * float(close) * 1000) / 100_000_000, 2)
 
             lines.append(f"  🏛️ 外資吸籌：20日累計買超 +{f_amt_yi}億元 (+{f_cum:,}張 | 買超天數比 {f_ratio}%)")
-            lines.append(f"  👥 千張大戶：{pct_1000}% (週增 {chg_1000_str})")
+            lines.append(f"  👥 千張大戶：{pct_1000}% (週增 {chg_1000_str} ｜ 月增 {chg_1m_str})")
             lines.append(f"  📈 動能指標：Minervini 7 條件全符 | {alpha_st}\n")
 
     lines.append("⚠️ 本報告由量化演算法自動產生，僅供策略研究參考，非投資建議。")

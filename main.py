@@ -141,6 +141,7 @@ def run_screener_pipeline(dry_run=False, notify=True, test_limit=None, force=Fal
         info["pct_1000"] = tdcc_item.get("pct_1000", 0.0)
         info["pct_400"] = tdcc_item.get("pct_400", 0.0)
         info["change_1000_1w"] = tdcc_item.get("change_1000_1w", 0.0)
+        info["change_1000_1m"] = tdcc_item.get("change_1000_1m", tdcc_item.get("change_1000_1w", 0.0))
         info["is_increasing_tdcc"] = tdcc_item.get("is_increasing", False)
 
     # 4. 下載歷史日 K 並計算 Minervini SEPA 趨勢模板、Alpha RS、橫盤振幅與 VCP 縮量
@@ -178,15 +179,34 @@ def run_screener_pipeline(dry_run=False, notify=True, test_limit=None, force=Fal
             pct_1000 = stock_info.get("pct_1000", 0.0)
             chg_1000 = stock_info.get("change_1000_1w", 0.0)
             f_ratio = stock_info.get("foreign_buy_ratio", 0.0)
+            chg_1m = stock_info.get("change_1000_1m", chg_1000)
 
             # 核心心法：大戶「持續增加（動能）」才是翻倍關鍵！
-            # 若本身持股太高 (> 75%) 且未持續增加，多屬牛皮成熟股，漲幅有限，予以排除！
+            # 方案 B（智慧雙軌制）+ 選項 2（週增/月增雙軌容錯機制）：
+            alpha_rs = sepa_result.get("alpha_rs", 100.0)
             is_big_holders_valid = False
-            if chg_1000 >= MIN_BIG_HOLDERS_WEEK_CHANGE:
+
+            # 1. 超級權王過濾：若大戶 > 75%，僅放行超越大盤的強勢霸主 (RS >= 115)，其餘防守牛皮股絕對排除！
+            if pct_1000 > MAX_STATIC_BIG_HOLDERS_PCT:
+                if alpha_rs >= 115.0 and (chg_1000 > 0 or chg_1m > 0):
+                    is_big_holders_valid = True
+                    stock_info["is_core_king"] = True
+                else:
+                    is_big_holders_valid = False
+            # 2. 嚴格防呆：禁止「雙重衰退」！短期週減且中期月減者，視為主力持續出貨，嚴格一票否決！
+            elif chg_1000 < 0 and chg_1m < 0:
+                is_big_holders_valid = False
+            # 3. 週增長為正 (短期動能強勁)
+            elif chg_1000 >= MIN_BIG_HOLDERS_WEEK_CHANGE:
                 is_big_holders_valid = True
-            elif pct_1000 <= MAX_STATIC_BIG_HOLDERS_PCT and pct_1000 >= MIN_ACTIVE_BIG_HOLDERS_PCT and f_ratio >= 0.55:
-                # 處於成長型爆發區間 (20% ~ 75%)，且外資近 20 天超過 55% 天數都在狂買吸籌
+            # 4. 月增長為正 (中期籌碼持續堆疊)，且大戶持股達標
+            elif chg_1m > 0 and pct_1000 >= MIN_ACTIVE_BIG_HOLDERS_PCT:
                 is_big_holders_valid = True
+            # 5. 洗盤容錯條款：外資近 20 天超過 60% 天數瘋狂吸籌，且當週微幅洗盤 (微減 <= -0.2%)
+            elif pct_1000 >= MIN_ACTIVE_BIG_HOLDERS_PCT and f_ratio >= 0.60 and chg_1000 >= -0.20:
+                is_big_holders_valid = True
+            else:
+                is_big_holders_valid = False
 
             if is_big_holders_valid:
                 full_info = {
