@@ -146,8 +146,9 @@ def get_tdcc_big_holders_summary(force_refresh=False):
     """
     history = load_tdcc_history()
     base_dir = os.path.dirname(os.path.abspath(__file__))
+    cache_daily_file = os.path.join(CACHE_DIR, "tdcc_latest.json")
     cache_daily_candidates = [
-        os.path.join(CACHE_DIR, "tdcc_latest.json"),
+        cache_daily_file,
         os.path.join(base_dir, "tdcc_latest.json")
     ]
 
@@ -216,8 +217,12 @@ def get_tdcc_big_holders_summary(force_refresh=False):
             "is_increasing": change_1000 > 0 or pct_1000 >= 60.0 # 若週增正或本身即高度集中 (>60%)
         }
 
-    with open(cache_daily_file, "w", encoding="utf-8") as f:
-        json.dump({"date": report_date, "data": result}, f, ensure_ascii=False)
+    for cdf in cache_daily_candidates:
+        try:
+            with open(cdf, "w", encoding="utf-8") as f:
+                json.dump({"date": report_date, "data": result}, f, ensure_ascii=False)
+        except Exception:
+            pass
 
     print(f"[TDCC] 成功解析 {len(result)} 檔標的之集保大戶數據 (日期: {report_date})")
     return result
