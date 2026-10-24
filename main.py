@@ -32,6 +32,7 @@ from sepa_engine import evaluate_stock_sepa
 from cluster_analyzer import group_stocks_by_cluster
 from notifier import format_screener_report, send_line_message
 from fundamental_gate import run_fundamental_check
+from trading_calendar import is_market_open_today
 from config import CACHE_DIR
 
 def fetch_history_batch(tickers, start_date, end_date):
@@ -63,12 +64,19 @@ def fetch_history_batch(tickers, start_date, end_date):
 
     return results
 
-def run_screener_pipeline(dry_run=False, notify=True, test_limit=None):
+def run_screener_pipeline(dry_run=False, notify=True, test_limit=None, force=False):
     start_time = time.time()
     today_str = datetime.now().strftime("%Y-%m-%d")
     print(f"\n========================================================")
     print(f"🚀 開始執行台股【大波段蓄勢模型】選股引擎 ({today_str})")
     print(f"========================================================")
+
+    # 0. 開盤日檢驗（三重防呆 + Fail-Open 樂觀放行零誤判原則）
+    is_open, open_reason = is_market_open_today(force=force)
+    if not is_open:
+        print(f"\n🏖️ [休市提示] {open_reason}，自動略過今日盤後選股與推播。")
+        print("💡 祝您假期愉快！系統將於下一個交易日 16:30 準時自動為您執行。")
+        return None, None
 
     # 1. 抓取今日全市場報價行情
     print("\n[步驟 1/5] 抓取全市場盤後報價行情與流動性初篩...")
@@ -315,6 +323,7 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="僅在終端機輸出報告，不發送 LINE 訊息")
     parser.add_argument("--no-notify", action="store_true", help="不觸發 LINE 通知")
     parser.add_argument("--limit", type=int, default=None, help="限制測試分析的股票數量")
+    parser.add_argument("--force", action="store_true", help="強制執行選股，略過休市檢查（手動執行模式）")
     args = parser.parse_args()
 
-    run_screener_pipeline(dry_run=args.dry_run, notify=not args.no_notify, test_limit=args.limit)
+    run_screener_pipeline(dry_run=args.dry_run, notify=not args.no_notify, test_limit=args.limit, force=args.force)
