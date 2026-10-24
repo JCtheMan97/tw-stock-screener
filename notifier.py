@@ -5,7 +5,12 @@ LINE Messaging API 推播模組
 產出排版清晰、分族群整理之「大波段蓄勢強勢股」精選報告
 """
 import json
-import requests
+import urllib.request
+import urllib.error
+try:
+    import requests
+except ImportError:
+    requests = None
 from datetime import datetime
 from config import LINE_CHANNEL_ACCESS_TOKEN, LINE_USER_ID
 
@@ -164,17 +169,36 @@ def send_line_message(message_text):
         "messages": messages_payload
     }
 
-    try:
-        res = requests.post(url, headers=headers, json=payload, timeout=15)
-        if res.status_code == 200:
-            print("[LINE] ✅ 訊息已成功推播至 LINE！")
-            return True
-        else:
-            print(f"[LINE] ❌ 推播失敗 (HTTP {res.status_code}): {res.text}")
+    if requests is not None:
+        try:
+            res = requests.post(url, headers=headers, json=payload, timeout=15)
+            if res.status_code == 200:
+                print("[LINE] ✅ 訊息已成功推播至 LINE！")
+                return True
+            else:
+                print(f"[LINE] ❌ 推播失敗 (HTTP {res.status_code}): {res.text}")
+                return False
+        except Exception as e:
+            print(f"[LINE] ❌ 連線錯誤: {e}")
             return False
-    except Exception as e:
-        print(f"[LINE] ❌ 連線錯誤: {e}")
-        return False
+    else:
+        try:
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=15) as res:
+                if res.status == 200:
+                    print("[LINE] ✅ 訊息已成功推播至 LINE！")
+                    return True
+                else:
+                    print(f"[LINE] ❌ 推播失敗 (HTTP {res.status})")
+                    return False
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8") if e.fp else ""
+            print(f"[LINE] ❌ 推播失敗 (HTTP {e.code}): {err_body}")
+            return False
+        except Exception as e:
+            print(f"[LINE] ❌ 連線錯誤: {e}")
+            return False
 
 if __name__ == "__main__":
     dummy_groups = [

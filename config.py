@@ -4,10 +4,27 @@ config.py
 台股「翻倍大波段」蓄勢模型與自動化推播設定檔
 """
 import os
-from dotenv import load_dotenv
 
-# 載入 .env 環境變數 (若存在)
-load_dotenv()
+# 載入 .env 環境變數 (優先使用 dotenv，若無則手動解析)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
+env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+if os.path.exists(env_file):
+    try:
+        with open(env_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    k, v = k.strip(), v.strip().strip("'\"")
+                    if k and not os.getenv(k):
+                        os.environ[k] = v
+    except Exception:
+        pass
 
 # --- 🎯 策略核心參數 (翻倍大波段蓄勢模型) ---
 # 1. 籌碼面：外資/法人波段狂買
@@ -39,6 +56,18 @@ MAX_MA50_BIAS_PCT = 25.0          # 50MA 乖離率上限 (避免過熱追高)
 # --- 📲 LINE Messaging API 推播設定 ---
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
 LINE_USER_ID = os.getenv("LINE_USER_ID", "")
+
+# 支援 Streamlit Cloud st.secrets (若存在)
+if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_USER_ID:
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets"):
+            if not LINE_CHANNEL_ACCESS_TOKEN and "LINE_CHANNEL_ACCESS_TOKEN" in st.secrets:
+                LINE_CHANNEL_ACCESS_TOKEN = st.secrets["LINE_CHANNEL_ACCESS_TOKEN"]
+            if not LINE_USER_ID and "LINE_USER_ID" in st.secrets:
+                LINE_USER_ID = st.secrets["LINE_USER_ID"]
+    except Exception:
+        pass
 
 # --- 📁 資料快取目錄 ---
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
