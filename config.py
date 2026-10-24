@@ -13,7 +13,8 @@ load_dotenv()
 # 1. 籌碼面：外資/法人波段狂買
 LOOKBACK_DAYS = 20            # 追蹤過去交易日數 (通常為 15~20 天)
 MIN_FOREIGN_BUY_RATIO = 0.50  # 過去 20 日中，外資買超天數比例 (例如 >= 50% 或 60%)
-MIN_CUMULATIVE_BUY_SHARES = 500  # 過去 20 日外資累計淨買超張數下限 (張)
+MIN_CUMULATIVE_BUY_AMOUNT = 50_000_000  # 過去 20 日外資累計淨買超金額下限 (元，預設 5,000 萬元，兼顧高價飆股與中小型股)
+MIN_CUMULATIVE_BUY_SHARES = 500  # 過去 20 日外資累計淨買超張數下限 (張，參考/雙軌備用)
 MIN_TODAY_VOLUME = 500        # 當日最低成交量 (張，排除無量殭屍股)
 
 # 2. 價格型態：橫盤不動 (壓盤吃貨箱型)

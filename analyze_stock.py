@@ -42,13 +42,18 @@ def generate_stock_context(ticker):
     inst = get_accumulated_institutional_data(days=20).get(ticker, {})
     tdcc = get_tdcc_big_holders_summary().get(ticker, {})
 
+    f_cum = inst.get("foreign_cum_buy", 0)
+    close_p = stock_info.get("close", 0.0)
+    f_amt_yi = round(f_cum * float(close_p) * 1000 / 100_000_000, 2)
+
     summary = {
         "ticker": ticker,
         "name": name,
-        "close": stock_info.get("close", 0.0),
+        "close": close_p,
         "sector": sector,
         "sub_industry": sub_industry,
-        "foreign_cum_20d": inst.get("foreign_cum_buy", 0),
+        "foreign_cum_20d": f_cum,
+        "foreign_cum_amount_yi": f_amt_yi,
         "pct_1000": tdcc.get("pct_1000", 0.0),
         "change_1000_1w": tdcc.get("change_1000_1w", 0.0)
     }
@@ -62,4 +67,4 @@ if __name__ == "__main__":
     info = generate_stock_context(args.ticker)
     print(f"✅ 已成功抓取 {info['ticker']} {info['name']} 基礎盤面與籌碼資訊：")
     print(f"   主產業: {info['sector']} | 次族群: {info['sub_industry']}")
-    print(f"   收盤價: ${info['close']} | 20日外資累計: +{info['foreign_cum_20d']:,}張 | 千張大戶: {info['pct_1000']}%")
+    print(f"   收盤價: ${info['close']} | 20日外資累計: +{info['foreign_cum_amount_yi']}億元 (+{info['foreign_cum_20d']:,}張) | 千張大戶: {info['pct_1000']}%")

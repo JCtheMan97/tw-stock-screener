@@ -28,19 +28,27 @@ def group_stocks_by_cluster(candidates):
 
     for sub_name, members in sub_industry_map.items():
         if len(members) >= MIN_CLUSTER_MEMBERS:
-            # 計算族群綜合統計指標
+            # 計算族群綜合統計指標 (張數與金額)
             total_foreign_buy = sum(m.get("foreign_cum_buy", 0) for m in members)
+            total_foreign_buy_amount = sum(m.get("foreign_cum_amount", m.get("foreign_cum_buy", 0) * float(m.get("close", 0)) * 1000) for m in members)
+            total_foreign_buy_amount_yi = round(total_foreign_buy_amount / 100_000_000, 2)
             avg_amplitude = round(sum(m.get("price_amplitude_20d", 0) for m in members) / len(members), 1)
             avg_big_holders = round(sum(m.get("pct_1000", 0) for m in members) / len(members), 1)
 
-            # 群組內標的依照外資買超張數排序
-            sorted_members = sorted(members, key=lambda x: x.get("foreign_cum_buy", 0), reverse=True)
+            # 群組內標的依照外資買超金額排序 (若相同再比張數)
+            sorted_members = sorted(
+                members,
+                key=lambda x: (x.get("foreign_cum_amount", 0), x.get("foreign_cum_buy", 0)),
+                reverse=True
+            )
 
             clustered_groups.append({
                 "sub_industry": sub_name,
                 "sector": members[0].get("sector", ""),
                 "count": len(members),
                 "total_foreign_buy": total_foreign_buy,
+                "total_foreign_buy_amount": total_foreign_buy_amount,
+                "total_foreign_buy_amount_yi": total_foreign_buy_amount_yi,
                 "avg_amplitude": avg_amplitude,
                 "avg_big_holders": avg_big_holders,
                 "members": sorted_members
@@ -48,10 +56,16 @@ def group_stocks_by_cluster(candidates):
         else:
             single_stocks.extend(members)
 
-    # 族群共振組排序：符合檔數越多優先、其次外資波段累計買超總張數越大優先
-    clustered_groups.sort(key=lambda g: (g["count"], g["total_foreign_buy"]), reverse=True)
+    # 族群共振組排序：符合檔數越多優先、其次外資波段累計買超總金額越大優先
+    clustered_groups.sort(
+        key=lambda g: (g["count"], g.get("total_foreign_buy_amount", g.get("total_foreign_buy", 0))),
+        reverse=True
+    )
 
-    # 單兵股排序：按外資累計買超排序
-    single_stocks.sort(key=lambda x: x.get("foreign_cum_buy", 0), reverse=True)
+    # 單兵股排序：按外資累計買超金額排序
+    single_stocks.sort(
+        key=lambda x: (x.get("foreign_cum_amount", 0), x.get("foreign_cum_buy", 0)),
+        reverse=True
+    )
 
     return clustered_groups, single_stocks

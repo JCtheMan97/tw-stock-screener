@@ -17,6 +17,7 @@ import yfinance as yf
 from config import (
     LOOKBACK_DAYS,
     MIN_FOREIGN_BUY_RATIO,
+    MIN_CUMULATIVE_BUY_AMOUNT,
     MIN_CUMULATIVE_BUY_SHARES,
     MIN_TODAY_VOLUME,
     MAX_PRICE_AMPLITUDE_PCT,
@@ -88,7 +89,7 @@ def run_screener_pipeline(dry_run=False, notify=True, test_limit=None):
     print(f"\n[步驟 2/5] 分析過去 {LOOKBACK_DAYS} 個交易日三大法人/外資波段吸籌數據...")
     inst_data = get_accumulated_institutional_data(days=LOOKBACK_DAYS)
     
-    # 籌碼面初篩：外資波段累計買超 >= MIN_CUMULATIVE_BUY_SHARES (500張) 且 買超天數比率 >= MIN_FOREIGN_BUY_RATIO (50%)
+    # 籌碼面初篩：外資波段累計買超金額 >= MIN_CUMULATIVE_BUY_AMOUNT (5,000萬元) 且 買超天數比率 >= MIN_FOREIGN_BUY_RATIO (50%)
     pool_2 = {}
     for ticker, q in pool_1.items():
         inst = inst_data.get(ticker, {})
@@ -96,14 +97,21 @@ def run_screener_pipeline(dry_run=False, notify=True, test_limit=None):
         f_ratio = inst.get("foreign_buy_ratio", 0.0)
         consecutive_f = inst.get("consecutive_foreign_days", 0)
 
-        # 核心籌碼條件：外資波段大買一陣子 (天數過半 或 連續大買)
-        if f_cum >= MIN_CUMULATIVE_BUY_SHARES and (f_ratio >= MIN_FOREIGN_BUY_RATIO or consecutive_f >= 3):
+        # 計算外資 20 日累計買超金額 (元) = 張數 * 現價 * 1000
+        close_price = float(q.get("close", 0.0))
+        f_cum_amount = f_cum * close_price * 1000
+        inst["foreign_cum_amount"] = f_cum_amount
+        inst["foreign_cum_amount_yi"] = round(f_cum_amount / 100_000_000, 2)
+
+        # 核心籌碼條件：外資波段真金白銀大買 (累計金額達標 且 (天數過半 或 連續大買))
+        if f_cum_amount >= MIN_CUMULATIVE_BUY_AMOUNT and (f_ratio >= MIN_FOREIGN_BUY_RATIO or consecutive_f >= 3):
             pool_2[ticker] = {
                 **q,
                 **inst
             }
 
-    print(f"  -> 符合「外資波段狂買一陣子」(累計買超>={MIN_CUMULATIVE_BUY_SHARES}張 & 買超天數比>={int(MIN_FOREIGN_BUY_RATIO*100)}%): 共 {len(pool_2)} 檔")
+    min_amt_yi = MIN_CUMULATIVE_BUY_AMOUNT / 100_000_000
+    print(f"  -> 符合「外資波段真金白銀大買」(累計買超金額>={min_amt_yi:.2f}億元 & 買超天數比>={int(MIN_FOREIGN_BUY_RATIO*100)}%): 共 {len(pool_2)} 檔")
 
     if test_limit and len(pool_2) > test_limit:
         print(f"  ⚠️ 啟用測試限制，僅分析前 {test_limit} 檔標的...")

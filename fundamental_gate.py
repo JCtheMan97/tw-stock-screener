@@ -266,13 +266,13 @@ def run_fundamental_check(ticker, stock_name="", sector="", sub_industry=""):
     checklist_md = "\n".join([f"- {'✅' if c['passed'] else '❌'} {c['name']}" for c in checkpoints])
 
     report = f"""
-========================================================
-💎【SEPA 深度基本面特檢報告・最後把關關卡】
-🎯 目標公司：**{ticker} {stock_name}**
-📊 產業族群：{sector} / {sub_industry}
-📅 財報基準：最新公布之季度財報 ({q_latest})
-🏆 基本面綜合等級：**{sepa_rank}**
-========================================================
+> ### 💎 SEPA 深度基本面特檢報告（最後把關關卡）
+> - 🎯 **目標公司**：`{ticker}` **{stock_name}**
+> - 📊 **產業族群**：{sector} ｜ {sub_industry}
+> - 📅 **財報基準**：最新公布之季度財報 (**{q_latest}**)
+> - 🏆 **基本面綜合等級**：**{sepa_rank}**
+
+---
 
 ## 模組一：核心看點與法說展望驗證
 1. **最新單季合併營收與成長態勢**：
@@ -329,12 +329,13 @@ def run_fundamental_check(ticker, stock_name="", sector="", sub_industry=""):
 
 ---
 
-# 🏆 SEPA 綜合特檢結論與診斷
+## 🏆 SEPA 綜合特檢結論與診斷
+
 ### 📋 五大基本面核心檢驗清單：
 {checklist_md}
 
-### 🎯 最終結論評定：【{ticker} {stock_name}】
-- **診斷結果**：{rank_badge}
-- **操作指引**：{"當前基本面動能強勁，若技術面同時站穩 10日 Pivot 頸線或完成 VCP 量縮收斂，為極佳之波段爆發進場點。" if passed_count >= 3 else "基本面暫未達頂級加速標準，若技術面破線或大盤回檔，應嚴格執行停損風控，勿逆勢加碼。"}
+> ### 🎯 最終結論評定：【{ticker} {stock_name}】
+> - **診斷結果**：{rank_badge}
+> - **操作指引**：{"當前基本面動能強勁，若技術面同時站穩 10日 Pivot 頸線或完成 VCP 量縮收斂，為極佳之波段爆發進場點。" if passed_count >= 3 else "基本面暫未達頂級加速標準，若技術面破線或大盤回檔，應嚴格執行停損風控，勿逆勢加碼。"}
 """
     return report

@@ -145,6 +145,59 @@ st.markdown("""
         font-size: 0.75rem;
         margin-right: 5px;
     }
+    /* SEPA 深度特檢報告容器與排版優化 */
+    .report-container {
+        background: rgba(22, 27, 34, 0.65);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 24px 28px;
+        margin-top: 15px;
+        margin-bottom: 25px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    }
+    .report-container h2 {
+        color: #38BDF8;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+        padding-bottom: 8px;
+        margin-top: 28px;
+        font-size: 1.35rem;
+    }
+    .report-container h3 {
+        color: #F1F5F9;
+        font-size: 1.15rem;
+        margin-top: 20px;
+    }
+    .report-container table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 18px 0;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .report-container th {
+        background: rgba(30, 41, 59, 0.95) !important;
+        color: #38BDF8 !important;
+        font-weight: 700;
+        padding: 10px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .report-container td {
+        padding: 10px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(15, 23, 42, 0.45);
+    }
+    .report-container blockquote {
+        background: rgba(30, 41, 59, 0.55);
+        border-left: 4px solid #00B4D8;
+        border-radius: 0 8px 8px 0;
+        padding: 14px 20px;
+        margin: 16px 0;
+        color: #E2E8F0;
+    }
+    .report-container blockquote h3 {
+        margin-top: 0;
+        color: #38BDF8;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -241,8 +294,8 @@ else:
 st.sidebar.markdown("---")
 st.sidebar.markdown("""
 **🎯 核心策略門檻**：
-- 外資 20 日累計買超 $\ge 500$ 張
-- 外資買超天數比率 $\ge 50\%$
+- 外資 20 日累計買超金額 $\ge 5,000$ 萬元 (兼顧高價飆股與中小型主力股)
+- 外資買超天數比率 $\ge 50\%$ (或近 3 日連續買超)
 - 20 日高低箱型振幅 $\le 12\% \sim 14\%$
 - 集保千張大戶持股持續增加 ($\Delta > 0$)
 - 0050 Alpha RS $\ge 100$
@@ -288,6 +341,10 @@ total_count = len(all_qualified)
 breakout_count = sum(1 for s in all_qualified if s.get("signal_type") == "BREAKOUT")
 stealth_count = sum(1 for s in all_qualified if s.get("signal_type") == "STEALTH")
 total_foreign_shares = sum(s.get("foreign_cum_buy", 0) for s in all_qualified)
+total_foreign_amount_yi = sum(
+    s.get("foreign_cum_amount", s.get("foreign_cum_buy", 0) * float(s.get("close", 0)) * 1000)
+    for s in all_qualified
+) / 100_000_000
 
 # --- 頂部 4 大 KPI 統計指標 ---
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
@@ -318,8 +375,8 @@ with kpi3:
 with kpi4:
     st.markdown(f"""
     <div class="metric-card">
-        <div class="metric-val" style="color: #00D26A;">+{total_foreign_shares:,}</div>
-        <div class="metric-label">🏛️ 外資波段狂買總張數 (20日)</div>
+        <div class="metric-val" style="color: #00D26A;">+{total_foreign_amount_yi:.1f} 億</div>
+        <div class="metric-label">🏛️ 外資波段狂買總金額 (+{total_foreign_shares:,}張)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -347,8 +404,11 @@ with tab_clusters:
         sub_name = g.get("sub_industry", "未分類族群")
         count = g.get("count", 0)
         tot_buy = g.get("total_foreign_buy", 0)
+        tot_amt_yi = g.get("total_foreign_buy_amount_yi")
+        if tot_amt_yi is None:
+            tot_amt_yi = round(g.get("total_foreign_buy_amount", 0) / 100_000_000, 2)
         
-        with st.expander(f"📁 【{sub_name}】 ({count} 檔符合 ｜ 外資20日累計吸籌 +{tot_buy:,} 張)", expanded=True):
+        with st.expander(f"📁 【{sub_name}】 ({count} 檔符合 ｜ 外資20日吸籌 {tot_amt_yi} 億 / +{tot_buy:,} 張)", expanded=True):
             cols = st.columns(min(count, 3) if count > 0 else 1)
             for i, m in enumerate(g.get("members", [])):
                 col = cols[i % min(count, 3)]
@@ -365,6 +425,11 @@ with tab_clusters:
                     else:
                         tdcc_str = "週增 0.00%"
 
+                    f_cum = m.get('foreign_cum_buy', 0)
+                    f_amt_yi = m.get('foreign_cum_amount_yi')
+                    if f_amt_yi is None:
+                        f_amt_yi = round(m.get('foreign_cum_amount', f_cum * float(m.get('close', 0)) * 1000) / 100_000_000, 2)
+
                     st.markdown(f"""
                     <div class="stock-card">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -376,7 +441,7 @@ with tab_clusters:
                         </div>
                         <div style="font-size:0.85rem; line-height:1.7;">
                             • 📦 <b>20日振幅</b>: {m.get('price_amplitude_20d')}% ｜ {m.get('vcp_status', '')}<br>
-                            • 🏛️ <b>外資波段</b>: +{m.get('foreign_cum_buy', 0):,}張 (買超天數比 {int(float(m.get('foreign_buy_ratio', 0))*100)}%)<br>
+                            • 🏛️ <b>外資波段</b>: +{f_amt_yi}億 (+{f_cum:,}張 ｜ 買超天數比 {int(float(m.get('foreign_buy_ratio', 0))*100)}%)<br>
                             • 👥 <b>千張大戶</b>: {m.get('pct_1000')}% ({tdcc_str})<br>
                             • 📈 <b>動能狀態</b>: {m.get('alpha_status', '強於大盤')} (RS: {m.get('alpha_rs', 100)})
                         </div>
@@ -407,6 +472,11 @@ with tab_singles:
                 else:
                     tdcc_str = "週增 0.00%"
 
+                f_cum = m.get('foreign_cum_buy', 0)
+                f_amt_yi = m.get('foreign_cum_amount_yi')
+                if f_amt_yi is None:
+                    f_amt_yi = round(m.get('foreign_cum_amount', f_cum * float(m.get('close', 0)) * 1000) / 100_000_000, 2)
+
                 st.markdown(f"""
                 <div class="stock-card">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -419,7 +489,7 @@ with tab_singles:
                     </div>
                     <div style="font-size:0.85rem; line-height:1.7;">
                         • 📦 <b>20日振幅</b>: {m.get('price_amplitude_20d')}% ｜ {m.get('vcp_status', '')}<br>
-                        • 🏛️ <b>外資波段</b>: +{m.get('foreign_cum_buy', 0):,}張 (買超天數比 {int(float(m.get('foreign_buy_ratio', 0))*100)}%)<br>
+                        • 🏛️ <b>外資波段</b>: +{f_amt_yi}億 (+{f_cum:,}張 ｜ 買超天數比 {int(float(m.get('foreign_buy_ratio', 0))*100)}%)<br>
                         • 👥 <b>千張大戶</b>: {m.get('pct_1000')}% ({tdcc_str})<br>
                         • 📈 <b>動能狀態</b>: {m.get('alpha_status', '強於大盤')} (RS: {m.get('alpha_rs', 100)})
                     </div>
@@ -525,7 +595,7 @@ with tab_fundamental:
     if top_target:
         st.subheader(f"💎 今日首選焦點標的特檢：【{top_target.get('ticker')} {top_target.get('name')}】")
         if fundamental_rep:
-            st.markdown(fundamental_rep)
+            st.markdown(f'<div class="report-container">\n\n{fundamental_rep}\n\n</div>', unsafe_allow_html=True)
         else:
             st.info("尚無預先生成之特檢報告。")
     else:
@@ -616,9 +686,10 @@ with tab_search:
                     st.info(f"ℹ️ 即時歷史 K 線量價連線獲取中或非交易時段（{ex_tech}），已優先呈現基本面深度特檢：")
 
                 # 2. 深度基本面報告 (動態六大模組)
+                st.markdown("<br>", unsafe_allow_html=True)
                 st.markdown("### 💎 【第二關：SEPA 3D 成長性 & 深度基本面特檢】")
                 rep = run_fundamental_check(ticker_c, name_c, sector_c, sub_c)
-                st.markdown(rep)
+                st.markdown(f'<div class="report-container">\n\n{rep}\n\n</div>', unsafe_allow_html=True)
 
 # ==========================================
 # TAB 6: 30天實質績效回測數據

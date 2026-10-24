@@ -37,7 +37,10 @@ def format_screener_report(clustered_groups, single_stocks, trade_date_str=None)
             sub_name = g["sub_industry"]
             count = g["count"]
             tot_buy = g["total_foreign_buy"]
-            lines.append(f"【{sub_name}】({count} 檔符合 | 外資波段大買 +{tot_buy:,}張)")
+            tot_amt_yi = g.get("total_foreign_buy_amount_yi")
+            if tot_amt_yi is None:
+                tot_amt_yi = round(g.get("total_foreign_buy_amount", 0) / 100_000_000, 2)
+            lines.append(f"【{sub_name}】({count} 檔符合 | 外資波段大買 {tot_amt_yi}億元 / +{tot_buy:,}張)")
 
             for m in g["members"]:
                 ticker = m["ticker"]
@@ -48,6 +51,9 @@ def format_screener_report(clustered_groups, single_stocks, trade_date_str=None)
                 amp = m["price_amplitude_20d"]
                 vcp_st = m["vcp_status"]
                 f_cum = m["foreign_cum_buy"]
+                f_amt_yi = m.get("foreign_cum_amount_yi")
+                if f_amt_yi is None:
+                    f_amt_yi = round(m.get("foreign_cum_amount", f_cum * float(close) * 1000) / 100_000_000, 2)
                 f_ratio = int(m.get("foreign_buy_ratio", 0) * 100)
                 pct_1000 = m.get("pct_1000", 0.0)
                 chg_1000 = m.get("change_1000_1w", 0.0)
@@ -67,7 +73,7 @@ def format_screener_report(clustered_groups, single_stocks, trade_date_str=None)
                 else:
                     lines.append(f"  📦 橫盤狀態：20日振幅僅 {amp}% | {vcp_st}")
 
-                lines.append(f"  🏛️ 外資吸籌：20日累計買超 +{f_cum:,}張 (買超天數比 {f_ratio}%)")
+                lines.append(f"  🏛️ 外資吸籌：20日累計買超 +{f_amt_yi}億元 (+{f_cum:,}張 | 買超天數比 {f_ratio}%)")
                 lines.append(f"  👥 千張大戶：{pct_1000}% (週增 {chg_1000_str})")
                 lines.append(f"  📈 動能指標：Minervini 7 條件全符 | {alpha_st}")
                 lines.append("")
@@ -104,7 +110,11 @@ def format_screener_report(clustered_groups, single_stocks, trade_date_str=None)
             else:
                 lines.append(f"  📦 橫盤狀態：20日振幅僅 {amp}% | {vcp_st}")
 
-            lines.append(f"  🏛️ 外資吸籌：20日累計買超 +{f_cum:,}張 (買超天數比 {f_ratio}%)")
+            f_amt_yi = m.get("foreign_cum_amount_yi")
+            if f_amt_yi is None:
+                f_amt_yi = round(m.get("foreign_cum_amount", f_cum * float(close) * 1000) / 100_000_000, 2)
+
+            lines.append(f"  🏛️ 外資吸籌：20日累計買超 +{f_amt_yi}億元 (+{f_cum:,}張 | 買超天數比 {f_ratio}%)")
             lines.append(f"  👥 千張大戶：{pct_1000}% (週增 {chg_1000_str})")
             lines.append(f"  📈 動能指標：Minervini 7 條件全符 | {alpha_st}\n")
 
