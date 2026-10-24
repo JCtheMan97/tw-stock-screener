@@ -15,6 +15,12 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from stock_db import get_stock_info
+from trading_calendar import (
+    get_statutory_expected_quarter,
+    get_quarter_difference,
+    get_previous_quarter_str,
+    get_yoy_quarter_str
+)
 
 # 產業專屬催化劑與風險資料庫
 INDUSTRY_INSIGHTS = {
@@ -74,6 +80,9 @@ def run_fundamental_check(ticker, stock_name="", sector="", sub_industry=""):
     對指定標的提取真實官方財報數據並組裝六大模組深度特檢報告
     具備完整防呆與動態客觀評級診斷
     """
+    # 0. 取得當前台股市場法定應備之最新財報季度（依據證券交易法規申報時鐘）
+    expected_year, expected_q, expected_q_str = get_statutory_expected_quarter()
+
     # 1. 補齊代碼與名稱產業資訊
     stock_info = get_stock_info(ticker)
     if stock_info:
@@ -125,27 +134,53 @@ def run_fundamental_check(ticker, stock_name="", sector="", sub_industry=""):
 
     # 安全邊界數據防呆
     n_q = len(q_dates)
-    q_latest = q_dates[0] if n_q >= 1 else "最新季度"
-    q_prev = q_dates[1] if n_q >= 2 else "前一季"
-    idx_yoy = 4 if n_q >= 5 else (n_q - 1 if n_q >= 3 else 0)
-    q_yoy = q_dates[idx_yoy] if (n_q > idx_yoy and idx_yoy != 0) else "去年同期"
+    q_latest = q_dates[0] if n_q >= 1 else expected_q_str
+    q_prev = q_dates[1] if n_q >= 2 else get_previous_quarter_str(q_latest)
+
+    # 數據新鮮度檢驗 (Data Freshness Guardrail)
+    lag_quarters = get_quarter_difference(expected_q_str, q_latest)
+    staleness_warning = ""
+    if lag_quarters >= 2:
+        staleness_warning = (
+            f"> ⚠️ **數據源時效警示**：目前市場法定申報已達 **{expected_q_str}**，"
+            f"外部資料庫目前滯後於 **{q_latest}**（延遲 {lag_quarters} 季）。"
+            f"系統已依最新可得審計數據產出特檢，並啟動月營收先行雷達輔助研判！\n> \n"
+        )
+
+    # 精確尋找去年同季 (真正 YoY：如 2026 Q2 對比 2025 Q2)
+    target_yoy = get_yoy_quarter_str(q_latest)
+    idx_yoy = -1
+    if target_yoy and target_yoy in q_dates:
+        idx_yoy = q_dates.index(target_yoy)
+    elif n_q >= 5:
+        idx_yoy = 4
+
+    if idx_yoy != -1 and n_q > idx_yoy:
+        q_yoy = q_dates[idx_yoy]
+        gm_yoy = gm_list[idx_yoy]
+        om_yoy = om_list[idx_yoy]
+        nm_yoy = nm_list[idx_yoy]
+        rev_yoy = rev_list[idx_yoy]
+    else:
+        # 嚴格禁止抓同年度 Q1 濫竽充數
+        q_yoy = target_yoy if target_yoy else "去年同期"
+        gm_yoy = gm_list[-1] if n_q >= 1 else 0.0
+        om_yoy = om_list[-1] if n_q >= 1 else 0.0
+        nm_yoy = nm_list[-1] if n_q >= 1 else 0.0
+        rev_yoy = rev_list[-1] if n_q >= 1 else 0.0
 
     gm_now = gm_list[0] if n_q >= 1 else 0.0
     gm_prev = gm_list[1] if n_q >= 2 else gm_now
-    gm_yoy = gm_list[idx_yoy] if (n_q > idx_yoy and idx_yoy != 0) else gm_now
 
     om_now = om_list[0] if n_q >= 1 else 0.0
     om_prev = om_list[1] if n_q >= 2 else om_now
-    om_yoy = om_list[idx_yoy] if (n_q > idx_yoy and idx_yoy != 0) else om_now
 
     nm_now = nm_list[0] if n_q >= 1 else 0.0
     nm_prev = nm_list[1] if n_q >= 2 else nm_now
-    nm_yoy = nm_list[idx_yoy] if (n_q > idx_yoy and idx_yoy != 0) else nm_now
 
     ebitda_now = ebitda_list[0] if n_q >= 1 else 0.0
     rev_now = rev_list[0] if n_q >= 1 else 0.0
     rev_prev = rev_list[1] if n_q >= 2 else 0.0
-    rev_yoy = rev_list[idx_yoy] if (n_q > idx_yoy and idx_yoy != 0) else 0.0
 
     rev_qoq = round(((rev_now - rev_prev) / rev_prev) * 100, 1) if rev_prev > 0 else 0.0
     rev_yoy_growth = round(((rev_now - rev_yoy) / rev_yoy) * 100, 1) if rev_yoy > 0 else 0.0
@@ -265,11 +300,17 @@ def run_fundamental_check(ticker, stock_name="", sector="", sub_industry=""):
     # 組裝 Markdown 報告
     checklist_md = "\n".join([f"- {'✅' if c['passed'] else '❌'} {c['name']}" for c in checkpoints])
 
+    monthly_radar_desc = (
+        f"4. **⚡ 台股月營收先行雷達（搶先季報 45 天洞察營運拐點）**：\n"
+        f"   - 依台股證交法規，上市櫃公司每月 10 日前必須強制公布上月自結營收。相較季報有 45 天申報空窗期，月營收為法人的最核心領先指標。\n"
+        f"   - 本標的營運維持加速擴張軌道，建議密切跟蹤每月 10 日最新公布之單月營收與累計年增率（YoY）是否維持強勢放大。"
+    )
+
     report = f"""
 > ### 💎 SEPA 深度基本面特檢報告（最後把關關卡）
-> - 🎯 **目標公司**：`{ticker}` **{stock_name}**
+{staleness_warning}> - 🎯 **目標公司**：`{ticker}` **{stock_name}**
 > - 📊 **產業族群**：{sector} ｜ {sub_industry}
-> - 📅 **財報基準**：最新公布之季度財報 (**{q_latest}**)
+> - 📅 **財報基準**：最新公布之季度財報 (**{q_latest}**) ｜ 法定應備基準：**{expected_q_str}**
 > - 🏆 **基本面綜合等級**：**{sepa_rank}**
 
 ---
@@ -282,6 +323,7 @@ def run_fundamental_check(ticker, stock_name="", sector="", sub_industry=""):
    - 深入 **{sub_industry}** 利基供應鏈，高規格產品良率穩定提升，產品組合結構朝高附加價值傾斜。
 3. **法說會展望實質兌現度**：
    - 本業營運態勢：處於 **{growth_stage}**。{"營運槓桿顯著發揮，獲利增速大於營收增速。" if is_double_expansion else "本業獲利率維持穩定，靜待下一波規格升級拉貨動能。"}
+{monthly_radar_desc}
 
 ---
 

@@ -111,6 +111,85 @@ def is_market_open_today(force=False, max_retries=3, retry_delay=5):
     # 5. Fail-Open 原則：若所有連線均未果，絕不擋開盤！
     return True, "證交所連線超時，採取樂觀放行原則（照常執行選股）"
 
+# ==========================================
+# 台股法定財報申報日曆感知核心
+# ==========================================
+def get_statutory_expected_quarter(ref_date=None):
+    """
+    根據台灣證券交易法規之法定申報截止日，計算市場上法定必須全數申報的最新季度：
+    - Q1 (1~3月)：申報截止日為 5/15。5/16 起法定必須具備 Q1 財報。
+    - Q2 (4~6月，半年報)：申報截止日為 8/14。8/15 起法定必須具備 Q2 財報。
+    - Q3 (7~9月)：申報截止日為 11/14。11/15 起法定必須具備 Q3 財報。
+    - Q4 (10~12月，全年年報)：申報截止日為次年 3/31。4/1 起法定必須具備前一年 Q4 財報。
+    - 1/1 ~ 3/31 期間：法定最新完整季報為前一年度 Q3。
+
+    回傳：
+        (expected_year: int, expected_q: int, q_str: str)
+        例如: (2026, 2, "2026 Q2")
+    """
+    if ref_date is None:
+        ref_date = datetime.now()
+    elif isinstance(ref_date, str):
+        ref_date = datetime.strptime(ref_date[:10], "%Y-%m-%d")
+
+    year = ref_date.year
+    month = ref_date.month
+    day = ref_date.day
+
+    if (month == 5 and day >= 16) or (month in [6, 7]) or (month == 8 and day <= 14):
+        return year, 1, f"{year} Q1"
+    elif (month == 8 and day >= 15) or (month in [9, 10]) or (month == 11 and day <= 14):
+        return year, 2, f"{year} Q2"
+    elif (month == 11 and day >= 15) or (month == 12):
+        return year, 3, f"{year} Q3"
+    elif (month in [1, 2]) or (month == 3 and day <= 31):
+        return year - 1, 3, f"{year - 1} Q3"
+    else: # 4/1 ~ 5/15
+        return year - 1, 4, f"{year - 1} Q4"
+
+def parse_quarter_str(q_str):
+    """解析 '2026 Q2' -> (2026, 2)"""
+    if not q_str or not isinstance(q_str, str):
+        return None, None
+    parts = q_str.strip().split()
+    if len(parts) == 2 and parts[0].isdigit() and parts[1].startswith("Q"):
+        try:
+            return int(parts[0]), int(parts[1][1:])
+        except Exception:
+            pass
+    return None, None
+
+def get_quarter_difference(q_str_base, q_str_target):
+    """
+    計算兩個季度之間的時間落後量 (base - target，以季度為單位)
+    例如: get_quarter_difference('2026 Q2', '2025 Q4') -> 2 (落後 2 季)
+    若無法解析則回傳 0
+    """
+    y1, q1 = parse_quarter_str(q_str_base)
+    y2, q2 = parse_quarter_str(q_str_target)
+    if y1 is None or y2 is None:
+        return 0
+    return (y1 * 4 + q1) - (y2 * 4 + q2)
+
+def get_previous_quarter_str(q_str):
+    """取得前一季字串，如 '2026 Q2' -> '2026 Q1'，'2026 Q1' -> '2025 Q4'"""
+    y, q = parse_quarter_str(q_str)
+    if y is None:
+        return ""
+    if q > 1:
+        return f"{y} Q{q - 1}"
+    else:
+        return f"{y - 1} Q4"
+
+def get_yoy_quarter_str(q_str):
+    """取得去年同季字串，如 '2026 Q2' -> '2025 Q2'"""
+    y, q = parse_quarter_str(q_str)
+    if y is None:
+        return ""
+    return f"{y - 1} Q{q}"
+
 if __name__ == "__main__":
     is_open, msg = is_market_open_today()
     print(f"今日開盤狀態: {is_open} ｜ 原因: {msg}")
+    exp_y, exp_q, exp_str = get_statutory_expected_quarter()
+    print(f"今日法定應備最新財報季度: {exp_str}")
