@@ -29,8 +29,13 @@ if BASE_DIR not in sys.path:
 
 import importlib
 from config import CACHE_DIR
-from main import run_screener_pipeline
-from fundamental_gate import run_fundamental_check
+try:
+    import fundamental_gate
+    importlib.reload(fundamental_gate)
+    from fundamental_gate import run_fundamental_check
+except Exception:
+    from fundamental_gate import run_fundamental_check
+
 from industry_mapping import get_stock_industry
 
 try:
@@ -145,48 +150,8 @@ st.markdown("""
         font-size: 0.75rem;
         margin-right: 5px;
     }
-    /* SEPA 深度特檢報告容器與排版優化 */
-    .report-container {
-        background: rgba(22, 27, 34, 0.65);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 12px;
-        padding: 24px 28px;
-        margin-top: 15px;
-        margin-bottom: 25px;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.25);
-    }
-    .report-container h2 {
-        color: #38BDF8;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-        padding-bottom: 8px;
-        margin-top: 28px;
-        font-size: 1.35rem;
-    }
-    .report-container h3 {
-        color: #F1F5F9;
-        font-size: 1.15rem;
-        margin-top: 20px;
-    }
-    .report-container table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 18px 0;
-        border-radius: 8px;
-        overflow: hidden;
-    }
-    .report-container th {
-        background: rgba(30, 41, 59, 0.95) !important;
-        color: #38BDF8 !important;
-        font-weight: 700;
-        padding: 10px 14px;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-    }
-    .report-container td {
-        padding: 10px 14px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        background: rgba(15, 23, 42, 0.45);
-    }
-    .report-container blockquote {
+    /* SEPA 深度特檢全域排版與表格優化 */
+    div[data-testid="stMarkdownContainer"] blockquote {
         background: rgba(30, 41, 59, 0.55);
         border-left: 4px solid #00B4D8;
         border-radius: 0 8px 8px 0;
@@ -194,12 +159,65 @@ st.markdown("""
         margin: 16px 0;
         color: #E2E8F0;
     }
-    .report-container blockquote h3 {
+    div[data-testid="stMarkdownContainer"] blockquote h3 {
         margin-top: 0;
         color: #38BDF8;
     }
+    div[data-testid="stMarkdownContainer"] table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 18px 0;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    div[data-testid="stMarkdownContainer"] th {
+        background: rgba(30, 41, 59, 0.95) !important;
+        color: #38BDF8 !important;
+        font-weight: 700;
+        padding: 10px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    div[data-testid="stMarkdownContainer"] td {
+        padding: 10px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(15, 23, 42, 0.45);
+    }
 </style>
 """, unsafe_allow_html=True)
+
+# --- 格式化輔助函數 ---
+def format_sepa_report(report_text):
+    """
+    清洗並格式化 SEPA 深度基本面報告，消除所有等號 CLI 雜訊並美化卡片
+    """
+    if not report_text:
+        return ""
+    import re
+    text = str(report_text).strip()
+    
+    # 1. 移除首尾與中途任何以連續等號 (====) 構成的命令行
+    text = re.sub(r'^[=\s]{4,}$', '', text, flags=re.MULTILINE)
+    
+    # 2. 如果包含舊式緊密型標頭，轉化為標準的 Blockquote 卡片
+    pattern = r'💎【SEPA 深度基本面特檢報告[・\s]最後把關關卡】\s*🎯 目標公司：(.*?)\s*📊 產業族群：(.*?)\s*📅 財報基準：(.*?)\s*🏆 基本面綜合等級：(.*?)(?=\n\n|\n##|$)'
+    match = re.search(pattern, text, flags=re.DOTALL)
+    if match:
+        co = match.group(1).strip()
+        sec = match.group(2).strip()
+        q = match.group(3).strip()
+        rank = match.group(4).strip()
+        card = f"""> ### 💎 SEPA 深度基本面特檢核心概要
+> - 🎯 **目標公司**：{co}
+> - 📊 **產業族群**：{sec}
+> - 📅 **財報基準**：{q}
+> - 🏆 **基本面等級**：{rank}
+
+---"""
+        text = text[:match.start()] + card + text[match.end():]
+        
+    # 3. 確保無任何殘餘的連續等號行
+    text = re.sub(r'^[=]{3,}\s*$', '', text, flags=re.MULTILINE)
+    return text.strip()
 
 # --- 資料讀取輔助函數 ---
 def load_latest_data():
@@ -595,7 +613,7 @@ with tab_fundamental:
     if top_target:
         st.subheader(f"💎 今日首選焦點標的特檢：【{top_target.get('ticker')} {top_target.get('name')}】")
         if fundamental_rep:
-            st.markdown(f'<div class="report-container">\n\n{fundamental_rep}\n\n</div>', unsafe_allow_html=True)
+            st.markdown(format_sepa_report(fundamental_rep))
         else:
             st.info("尚無預先生成之特檢報告。")
     else:
@@ -689,7 +707,7 @@ with tab_search:
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.markdown("### 💎 【第二關：SEPA 3D 成長性 & 深度基本面特檢】")
                 rep = run_fundamental_check(ticker_c, name_c, sector_c, sub_c)
-                st.markdown(f'<div class="report-container">\n\n{rep}\n\n</div>', unsafe_allow_html=True)
+                st.markdown(format_sepa_report(rep))
 
 # ==========================================
 # TAB 6: 30天實質績效回測數據
