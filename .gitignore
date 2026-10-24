@@ -1,0 +1,24 @@
+# Virtual Environment
+venv/
+.venv/
+env/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment Secrets
+.env
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# 排除每日爬蟲暫存的大型原始數據 dump，只保留最新聚合結果 latest_screen_data.json
+cache/inst_*.json
+cache/today_quotes.json
+cache/tdcc_*.json
+cache/sepa_deep_check_*.md
+cache/*.pkl
