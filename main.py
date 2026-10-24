@@ -140,6 +140,7 @@ def run_screener_pipeline(dry_run=False, notify=True, test_limit=None):
     
     # 下載 0050 基準
     start_date = (datetime.now() - pd.Timedelta(days=400)).strftime("%Y-%m-%d")
+    end_date = (datetime.now() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
     try:
         df_0050 = yf.Ticker("0050.TW").history(start=start_date, end=end_date, auto_adjust=True)
     except Exception:
