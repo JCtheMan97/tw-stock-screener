@@ -1,0 +1,46 @@
+name: 每日台股大波段自動選股與 LINE 推播
+
+on:
+  schedule:
+    # 台灣時間週一至週五下午 16:30 (UTC 08:30)
+    - cron: '30 8 * * 1-5'
+  workflow_dispatch: # 允許在 GitHub 頁面上手動一鍵點擊觸發
+
+permissions:
+  contents: write
+
+jobs:
+  run-screener:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: 檢查並拉取程式碼 (Checkout)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 設定 Python 環境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: 安裝相依套件 (Dependencies)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 執行全市場大波段選股與 LINE 推播
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+        run: |
+          python main.py
+
+      - name: 自動將最新快取與報告推回 GitHub (同步更新 Streamlit 網站)
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add latest_screen_data.json cache/latest_screen_data.json reports/
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore(auto): 盤後自動更新選股快取與日報 [skip ci]" && git push)
