@@ -237,6 +237,17 @@ def run_screener_pipeline(dry_run=False, notify=True, test_limit=None, force=Fal
 
     # 6. 最後基本面關卡：多因子動態綜合評分，挑選今日爆發潛力第一名作為首選標的
     print("\n[步驟 6/6] 執行最後基本面關卡：SEPA 多因子動態評分與首選特檢...")
+
+    # 建立次族群共振映射 (Minervini 法則：最強飆股 50% 來自最強主流族群共振)
+    cluster_map = {}
+    for g in clustered_groups:
+        for m in g.get("members", []):
+            cluster_map[m["ticker"]] = {
+                "cluster_count": g.get("count", 1),
+                "cluster_amount_yi": g.get("total_foreign_buy_amount_yi", 0.0),
+                "sub_industry": g.get("sub_industry", "")
+            }
+
     def calculate_sepa_rank_score(s):
         score = 0.0
         # 1. 突破爆發信號權重大加分
@@ -253,29 +264,54 @@ def run_screener_pipeline(dry_run=False, notify=True, test_limit=None, force=Fal
             elif "Dead Quiet" in s.get("vcp_status", ""):
                 score += 30.0
 
-        # 2. Alpha RS 動能強度
+        # 2. Alpha RS 動能強度 (設上限 +45分，避免低基期反彈牛皮股過度灌水)
         alpha = s.get("alpha_rs", 100.0)
-        score += (alpha - 100.0) * 1.5
+        score += min(max((alpha - 100.0) * 1.5, -20.0), 45.0)
 
         # 3. 外資波段吸籌強度 (買超天數比例與連續度)
         f_ratio = s.get("foreign_buy_ratio", 0.0)
         score += f_ratio * 50.0
 
-        # 4. 集保千張大戶動態增減 (大戶增量是飆股靈魂)
+        # 4. 集保千張大戶動態增減 (大戶實質增量是飆股靈魂)
         chg_1000 = s.get("change_1000_1w", 0.0)
         if chg_1000 > 0:
-            score += min(chg_1000 * 30, 60.0)
+            score += min(chg_1000 * 40, 70.0)
+            if chg_1000 >= 1.0:
+                score += 15.0 # 單週大增 1% 以上超狂鎖碼特別加分
         pct_1000 = s.get("pct_1000", 0.0)
         if 35.0 <= pct_1000 <= 75.0:
             score += 20.0 # 處於黃金大戶成長區間
 
+        # 5. 族群共振加分 (Minervini 法則：最強飆股 50% 來自最強主流族群)
+        c_info = cluster_map.get(s.get("ticker"), {})
+        c_cnt = c_info.get("cluster_count", 1)
+        if c_cnt >= 3:
+            score += 30.0 # 3 檔以上大部隊共振
+        elif c_cnt >= 2:
+            score += 15.0 # 2 檔共振
+        if c_info.get("cluster_amount_yi", 0.0) >= 30.0:
+            score += 15.0 # 族群法人大單吸籌共振加分 (族群吸籌 >= 30億)
+
         return round(score, 1)
 
+    # 判斷是否為金融服務類股（金控/銀行/保險/證券）
+    def is_financial_sector(stock):
+        sec = stock.get("sector", "")
+        sub = stock.get("sub_industry", "")
+        return (
+            sec in ["金融服務", "金融保險"] or
+            "金控" in sub or "銀行" in sub or "保險" in sub or "證券" in sub
+        )
+
+    # 金融股保留在族群/單兵監控中作為防禦資金流向參考，但排除角逐 SEPA 成長爆發首選
+    growth_candidates = [s for s in qualified_stocks if not is_financial_sector(s)]
+    target_pool = growth_candidates if growth_candidates else qualified_stocks
+
     top_target = None
-    if qualified_stocks:
-        top_target = max(qualified_stocks, key=calculate_sepa_rank_score)
+    if target_pool:
+        top_target = max(target_pool, key=calculate_sepa_rank_score)
         top_score = calculate_sepa_rank_score(top_target)
-        print(f"  -> 今日綜合評分最高焦點標的：{top_target['ticker']} {top_target['name']} (綜合得分: {top_score}分)")
+        print(f"  -> 今日綜合評分最高焦點標的 (排除金融股)：{top_target['ticker']} {top_target['name']} (綜合得分: {top_score}分)")
 
     fundamental_report = ""
     if top_target:
